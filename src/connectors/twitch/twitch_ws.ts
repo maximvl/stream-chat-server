@@ -28,11 +28,15 @@ type ParsedMsg = {
   message: string
 }
 
+type BoardcasterId = string & { readonly __brand: unique symbol }
+
 class TwitchConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
   channelsMap: Map<ChannelName, ChannelId> = new Map()
   reverseChannelsMap: Map<ChannelId, ChannelName> = new Map()
+
+  broadcastersMap: Map<ChannelName, BoardcasterId> = new Map()
 
   connectingChannels: Set<ChannelName> = new Set()
 
@@ -253,7 +257,12 @@ class TwitchConnector {
     }
   }
 
-  async fetch_broadcaster_id(channel: ChannelName): Promise<string> {
+  async fetch_broadcaster_id(channel: ChannelName): Promise<BoardcasterId> {
+    const existingId = this.broadcastersMap.get(channel)
+    if (existingId) {
+      return existingId
+    }
+
     const response = await fetch(
       `https://api.twitch.tv/helix/users?login=${channel}`,
       {
@@ -261,7 +270,9 @@ class TwitchConnector {
       },
     )
     const data = await response.json()
-    return UserResponseSchema.assert(data).data[0].id
+    const id = UserResponseSchema.assert(data).data[0].id as BoardcasterId
+    this.broadcastersMap.set(channel, id)
+    return id
   }
 
   async fetch_badges(channel?: ChannelName) {
