@@ -366,7 +366,7 @@ export class TwitchConnector implements ChatConnector {
   cleanup(): void {
     const now = Temporal.Now.instant()
     const disconnectCutoff = now.subtract(
-      Temporal.Duration.from({ minutes: 1 }),
+      Temporal.Duration.from({ minutes: 30 }),
     )
     this.log(LogLevel.VERBOSE, `Cleaning up channels`)
     for (const [channel, storage] of this.messages.entries()) {
