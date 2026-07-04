@@ -1,4 +1,5 @@
 import { load } from '@std/dotenv'
+import { LogLevel } from './utils.ts'
 
 const env = await load({
   // optional: choose a specific path (defaults to ".env")
@@ -9,3 +10,5 @@ const env = await load({
 
 export const TWITCH_OAUTH_TOKEN = env.TWITCH_OAUTH_TOKEN || ''
 export const TWITCH_USERNAME = env.TWITCH_USERNAME || ''
+
+export const LOG_LEVEL = Number(env.LOG_LEVEL) || LogLevel.ALL

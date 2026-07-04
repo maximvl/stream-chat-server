@@ -1,5 +1,5 @@
 import { TWITCH_OAUTH_TOKEN, TWITCH_USERNAME } from '../config.ts'
-import { sleep } from '../utils.ts'
+import { LogLevel, sleep } from '../utils.ts'
 import { ChatChannel, ChatServer } from './types.ts'
 
 type ChannelId = string & { readonly __brand: unique symbol }
@@ -13,7 +13,7 @@ type RawMsg = {
 
 type ParsedMsg = {
   user: string
-  badges: string[]
+  badges: Record<string, string>
   channel: string
   message: string
 }
@@ -28,7 +28,7 @@ class TwitchConnector {
 
   constructor() {}
 
-  log(msg: string) {
+  log(level: LogLevel, msg: string) {
     console.log(`[${this.server}] ${msg}`)
   }
 
@@ -37,7 +37,7 @@ class TwitchConnector {
       await this.initWebsocket()
     }
     if (!this.websocket) {
-      this.log('Failed to connect')
+      this.log(LogLevel.DEBUG, 'Failed to connect')
       return
     }
 
@@ -74,7 +74,7 @@ class TwitchConnector {
       },
     })
     this.websocket.onopen = () => {
-      this.log('Connection opened')
+      this.log(LogLevel.DEBUG, 'Connection opened')
     }
     this.websocket.onmessage = (event) => {
       this.handleMessage(event)
@@ -83,16 +83,17 @@ class TwitchConnector {
       this.handleClose()
     }
     this.websocket.onerror = (error) => {
-      this.log(`Connection error: ${JSON.stringify(error)}`)
+      this.log(LogLevel.DEBUG, `Connection error: ${JSON.stringify(error)}`)
     }
 
     while (this.websocket?.readyState !== WebSocket.OPEN) {
-      this.log('Waiting for connection to open...')
+      this.log(LogLevel.DEBUG, 'Waiting for connection to open...')
       // Small delay to avoid busy waiting
       await sleep(200)
     }
 
     this.log(
+      LogLevel.DEBUG,
       `ws state: ${this.websocket?.readyState} (expected: ${WebSocket.OPEN})`,
     )
 
@@ -102,7 +103,7 @@ class TwitchConnector {
   }
 
   handleClose() {
-    this.log('Connection closed')
+    this.log(LogLevel.DEBUG, 'Connection closed')
     this.websocket?.close()
     this.websocket = null
   }
@@ -112,12 +113,17 @@ class TwitchConnector {
       return
     }
     if (typeof event.data !== 'string') {
-      this.log(`Received non-string message: ${JSON.stringify(event.data)}`)
+      this.log(
+        LogLevel.DEBUG,
+        `Received non-string message: ${JSON.stringify(event.data)}`,
+      )
       return
     }
     const frames = event.data.split('\r\n')
     for (const frame of frames) {
       const trimmed = frame.trim()
+      this.log(LogLevel.ALL, `Received frame: [${trimmed}]`)
+
       if (trimmed === 'PING :tmi.twitch.tv') {
         this.websocketSend('PONG :tmi.twitch.tv')
         continue
@@ -133,7 +139,7 @@ class TwitchConnector {
 
     if (parts.length === 3 && parts[1] === 'JOIN') {
       const channel = this.reverseChannelsMap.get(parts[2] as ChannelId)
-      this.log(`Connected to channel: ${channel}`)
+      this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
       this.connectingChannels.delete(channel!)
       return
     }
@@ -171,13 +177,12 @@ class TwitchConnector {
       channel: rawMsg.channelPart,
       message: rawMsg.message.slice(1),
     }
-
-    this.log(`Parsed message: ${JSON.stringify(parsed)}`)
+    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(parsed)}`)
   }
 
-  parseBadges(badgesStr: string): string[] {
+  parseBadges(badgesStr: string): Record<string, string> {
     const parts = badgesStr.split(';')
-    return parts.filter(
+    const filered = parts.filter(
       (p) =>
         p.startsWith('color=') ||
         p.startsWith('badge=') ||
@@ -187,6 +192,16 @@ class TwitchConnector {
         p.startsWith('vip=') ||
         p.startsWith('mod='),
     )
+
+    const result: Record<string, string> = {}
+    for (const badge of filered) {
+      const split = badge.split('=')
+      if (split.length !== 2) {
+        continue
+      }
+      result[split[0]] = split[1]
+    }
+    return result
   }
 }
 

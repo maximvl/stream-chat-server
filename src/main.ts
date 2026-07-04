@@ -17,6 +17,6 @@ export function handler(req: Request): Response {
 }
 
 if (import.meta.main) {
-  twitchConnector.connect('praden' as ChatChannel)
+  twitchConnector.connect('segall' as ChatChannel)
   Deno.serve(handler)
 }
