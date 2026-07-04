@@ -1,5 +1,5 @@
 import { TWITCH_OAUTH_TOKEN, TWITCH_USERNAME } from '../config.ts'
-import { LogLevel, sleep } from '../utils.ts'
+import { LogLevel, myLog, sleep } from '../utils.ts'
 import { ChatChannel, ChatServer } from './types.ts'
 
 type ChannelId = string & { readonly __brand: unique symbol }
@@ -29,7 +29,7 @@ class TwitchConnector {
   constructor() {}
 
   log(level: LogLevel, msg: string) {
-    console.log(`[${this.server}] ${msg}`)
+    myLog(level, `[${this.server}] ${msg}`)
   }
 
   async connect(channel: ChatChannel) {
@@ -59,6 +59,7 @@ class TwitchConnector {
   websocketSend(message: string) {
     if (!this.websocket) {
       this.log(
+        LogLevel.DEBUG,
         `Failed to send message, websocket not initialized: [${message}]`,
       )
       return

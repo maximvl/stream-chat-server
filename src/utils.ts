@@ -14,7 +14,7 @@ export const LogLevel = {
   ALL: 3 as LogLevel,
 } as const
 
-export function log(level: LogLevel, ...args: unknown[]) {
+export function myLog(level: LogLevel, ...args: unknown[]) {
   if (level <= LOG_LEVEL) {
     console.log(...args)
   }
