@@ -1,4 +1,9 @@
-import { LogLevel, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN } from '../../config.ts'
+import {
+  LogLevel,
+  TWITCH_CLIENT_ID,
+  TWITCH_OAUTH_TOKEN,
+  TWITCH_REFRESH_TOKEN,
+} from '../../config.ts'
 import { type } from 'arktype'
 import { db } from '../../db/db.ts'
 import { tokensTable } from '../../db/schema.ts'
@@ -16,6 +21,9 @@ export class TwitchTokenManager implements TokenManager {
   }
 
   constructor() {
+    this.accessToken = TWITCH_OAUTH_TOKEN
+    this.refreshToken = TWITCH_REFRESH_TOKEN
+    this.expiresAt = Temporal.Now.instant().add({ minutes: 30 })
     this.loadToken().then((token) => {
       if (token) {
         this.accessToken = token.access_token
@@ -24,7 +32,10 @@ export class TwitchTokenManager implements TokenManager {
           token.expires_at * 1000,
         )
       } else {
-        this.log(LogLevel.DEBUG, 'No token found in database')
+        this.log(
+          LogLevel.DEBUG,
+          'No token found in database, loading from config',
+        )
       }
     }).catch((error) => {
       this.log(LogLevel.DEBUG, `Error loading token: ${JSON.stringify(error)}`)
@@ -103,10 +114,6 @@ export class TwitchTokenManager implements TokenManager {
     if (Temporal.Instant.compare(now, refreshSince) >= 0) {
       await this.doRefreshToken(this.refreshToken)
     }
-  }
-
-  getToken(): string {
-    return this.accessToken!
   }
 }
 

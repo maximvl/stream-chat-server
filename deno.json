@@ -5,7 +5,9 @@
     "test": "deno test --allow-env --allow-read",
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "check": "deno check **/*.ts"
+    "check": "deno check **/*.ts",
+    "generate": "deno run -A npm:drizzle-kit generate",
+    "migrate": "deno run -A npm:drizzle-kit migrate"
   },
   "compilerOptions": {
     "strict": true

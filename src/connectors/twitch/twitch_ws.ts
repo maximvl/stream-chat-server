@@ -1,9 +1,4 @@
-import {
-  LogLevel,
-  TWITCH_CLIENT_ID,
-  TWITCH_OAUTH_TOKEN,
-  TWITCH_USERNAME,
-} from '../../config.ts'
+import { LogLevel, TWITCH_CLIENT_ID, TWITCH_USERNAME } from '../../config.ts'
 import { TwitchTokenManager } from './token_manager.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
@@ -21,6 +16,7 @@ import {
   BadgeVersion,
   UserResponseSchema,
 } from './schemas.ts'
+import { type } from 'arktype'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -60,8 +56,8 @@ export class TwitchConnector implements ChatConnector {
     })
   }
 
-  log(level: LogLevel, msg: string) {
-    myLog(level, `[${this.server}] ${msg}`)
+  log(level: LogLevel, ...msgs: unknown[]) {
+    myLog(level, `[${this.server}]`, ...msgs)
   }
 
   async connect(channel: ChannelName): Promise<void> {
@@ -148,7 +144,7 @@ export class TwitchConnector implements ChatConnector {
       `ws state: ${this.websocket?.readyState} (expected: ${WebSocket.OPEN})`,
     )
 
-    this.websocketSend(`PASS oauth:${TWITCH_OAUTH_TOKEN}`)
+    this.websocketSend(`PASS oauth:${this.tokenManager.accessToken}`)
     this.websocketSend(`NICK ${TWITCH_USERNAME}`)
     this.websocketSend('CAP REQ :twitch.tv/tags')
   }
@@ -303,7 +299,7 @@ export class TwitchConnector implements ChatConnector {
 
   web_auth_headers() {
     return {
-      Authorization: `Bearer ${TWITCH_OAUTH_TOKEN}`,
+      Authorization: `Bearer ${this.tokenManager.accessToken}`,
       'Client-Id': TWITCH_CLIENT_ID,
     }
   }
@@ -340,10 +336,29 @@ export class TwitchConnector implements ChatConnector {
         headers: this.web_auth_headers(),
       },
     )
+
+    if (!response.ok) {
+      this.log(
+        LogLevel.DEBUG,
+        'Failed to fetch badges, probably invalid auth token:',
+        response.status,
+        response.statusText,
+      )
+      return new Map()
+    }
+
     const data = await response.json()
-    const badgesData = BadgeResponseSchema.assert(data).data
+
+    const badgesResponse = BadgeResponseSchema(data)
+    if (badgesResponse instanceof type.errors) {
+      this.log(
+        LogLevel.DEBUG,
+        'Failed to parse badges response:' + badgesResponse.issues,
+      )
+      return new Map()
+    }
     const badgesDict: Map<string, Map<string, BadgeVersion>> = new Map()
-    for (const badge of badgesData) {
+    for (const badge of badgesResponse.data) {
       badgesDict.set(
         badge.set_id,
         new Map(badge.versions.map((v) => [v.id, v])),

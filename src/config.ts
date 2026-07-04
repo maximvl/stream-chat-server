@@ -18,6 +18,7 @@ const env = await load({
 })
 
 export const TWITCH_OAUTH_TOKEN = env.TWITCH_OAUTH_TOKEN || ''
+export const TWITCH_REFRESH_TOKEN = env.TWITCH_REFRESH_TOKEN || ''
 export const TWITCH_USERNAME = env.TWITCH_USERNAME || ''
 export const TWITCH_CLIENT_ID = env.TWITCH_CLIENT_ID || ''
 
