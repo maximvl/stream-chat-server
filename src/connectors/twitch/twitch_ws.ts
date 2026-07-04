@@ -4,14 +4,14 @@ import {
   TWITCH_USERNAME,
 } from '../../config.ts'
 import { LogLevel, myLog, sleep } from '../../utils.ts'
-import { ChannelName, ChatServer } from '../types.ts'
+import { ChannelName, ChatConnector, ChatServer } from '../types.ts'
 import {
   BadgeResponseSchema,
   BadgeVersion,
   UserResponseSchema,
 } from './schemas.ts'
 
-type ChannelId = string & { readonly __brand: unique symbol }
+type InternalChannelId = string & { readonly __brand: unique symbol }
 
 type RawMsg = {
   userPart: string | null
@@ -30,11 +30,11 @@ type ParsedMsg = {
 
 type BoardcasterId = string & { readonly __brand: unique symbol }
 
-class TwitchConnector {
+class TwitchConnector implements ChatConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
-  channelsMap: Map<ChannelName, ChannelId> = new Map()
-  reverseChannelsMap: Map<ChannelId, ChannelName> = new Map()
+  channelsMap: Map<ChannelName, InternalChannelId> = new Map()
+  reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
 
   broadcastersMap: Map<ChannelName, BoardcasterId> = new Map()
 
@@ -73,7 +73,7 @@ class TwitchConnector {
     this.badgesByChannel.set(channel, channelBadges)
 
     const channelLower = channel.toLowerCase() as ChannelName
-    const channelId = `#${channelLower}` as ChannelId
+    const channelId = `#${channelLower}` as InternalChannelId
 
     this.channelsMap.set(channelLower, channelId)
     this.reverseChannelsMap.set(channelId, channelLower)
@@ -164,7 +164,7 @@ class TwitchConnector {
     const parts = msg.split(' ')
 
     if (parts.length === 3 && parts[1] === 'JOIN') {
-      const channel = this.reverseChannelsMap.get(parts[2] as ChannelId)
+      const channel = this.reverseChannelsMap.get(parts[2] as InternalChannelId)
       this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
       this.connectingChannels.delete(channel!)
       return
