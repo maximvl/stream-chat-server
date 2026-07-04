@@ -368,7 +368,7 @@ export class TwitchConnector implements ChatConnector {
     const disconnectCutoff = now.subtract(
       Temporal.Duration.from({ minutes: 1 }),
     )
-    this.log(LogLevel.DEBUG, `Cleaning up channels`)
+    this.log(LogLevel.VERBOSE, `Cleaning up channels`)
     for (const [channel, storage] of this.messages.entries()) {
       if (Temporal.Instant.compare(storage.lastReadAt, disconnectCutoff) < 0) {
         this.disconnect(channel)
