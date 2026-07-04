@@ -1,5 +1,7 @@
 import { twitchConnector } from './connectors/twitch/twitch_ws.ts'
 import { ChannelName } from './connectors/types.ts'
+import { messageStorage } from './storage/messageStorage.ts'
+import { sleep } from './utils.ts'
 
 export function handler(req: Request): Response {
   const url = new URL(req.url)
@@ -16,7 +18,15 @@ export function handler(req: Request): Response {
   })
 }
 
+async function cleanupLoop() {
+  while (true) {
+    messageStorage.cleanupOldMessages()
+    await sleep(1000 * 60 * 5) // 5 minutes
+  }
+}
+
 if (import.meta.main) {
+  cleanupLoop()
   twitchConnector.connect('segall' as ChannelName)
   Deno.serve(handler)
 }

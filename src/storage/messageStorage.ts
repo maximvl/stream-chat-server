@@ -17,6 +17,10 @@ class ChannelStorage {
     this.lastReadAt = Temporal.Now.instant()
     return this.messages.filter((message) => message.timestamp > timestamp)
   }
+
+  clear() {
+    this.messages = []
+  }
 }
 
 class MessagesStorage {
@@ -58,7 +62,16 @@ class MessagesStorage {
   }
 
   cleanupOldMessages() {
-    // TODO: Implement cleanup logic
+    const now = Temporal.Now.instant()
+    const removeInteval = Temporal.Duration.from({ minutes: 30 })
+    for (const [_, channelMap] of this.messagesPerServer) {
+      for (const [_, channelStorage] of channelMap) {
+        const cutoff = now.subtract(removeInteval)
+        if (channelStorage.lastReadAt < cutoff) {
+          channelStorage.clear()
+        }
+      }
+    }
   }
 }
 
