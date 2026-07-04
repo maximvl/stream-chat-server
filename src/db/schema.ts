@@ -5,6 +5,6 @@ export const tokensTable = sqliteTable('tokens', {
   server: text().notNull(),
   token: text().notNull(),
   refresh_token: text().notNull(),
-  createdAt: int().notNull(),
+  created_at: int().notNull(),
   expires_in: int().notNull(),
 })

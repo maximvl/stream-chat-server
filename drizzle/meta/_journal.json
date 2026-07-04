@@ -8,6 +8,13 @@
       "when": 1783190137501,
       "tag": "0000_aspiring_shiver_man",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783190319590,
+      "tag": "0001_watery_firelord",
+      "breakpoints": true
     }
   ]
 }

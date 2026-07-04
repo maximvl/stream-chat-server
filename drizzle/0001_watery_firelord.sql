@@ -1,0 +1,1 @@
+ALTER TABLE `tokens` RENAME COLUMN "createdAt" TO "created_at";
