@@ -4,6 +4,7 @@ import {
   TWITCH_OAUTH_TOKEN,
   TWITCH_USERNAME,
 } from '../../config.ts'
+import { TwitchTokenManager } from '../../tokens/twitch_manager.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import {
@@ -50,6 +51,8 @@ export class TwitchConnector implements ChatConnector {
 
   channelStatus: Map<ChannelName, 'connected' | 'disconnected' | 'connecting'> =
     new Map()
+
+  tokenManager = new TwitchTokenManager()
 
   constructor() {
     this.fetch_badges().then((badges) => {
@@ -376,6 +379,10 @@ export class TwitchConnector implements ChatConnector {
         storage.clearOldMessages()
       }
     }
+  }
+
+  async maybeRefreshToken(): Promise<void> {
+    await this.tokenManager.maybeRefreshToken()
   }
 
   getChannelStatus(

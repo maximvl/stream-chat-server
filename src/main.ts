@@ -1,10 +1,10 @@
 import { sleep } from './utils.ts'
 import { main_handler } from './api/handlers.ts'
-import { connectors } from './connectors/utils.ts'
+import { AppState } from './app.ts'
 
 async function cleanupLoop() {
   while (true) {
-    const connectorsArray = Array.from(connectors.values())
+    const connectorsArray = Array.from(AppState.connectors.values())
     for (const connector of connectorsArray) {
       connector.cleanup()
     }
@@ -12,7 +12,20 @@ async function cleanupLoop() {
   }
 }
 
+async function tokenRefreshLoop() {
+  while (true) {
+    for (const [_server, connector] of AppState.connectors.entries()) {
+      if (connector) {
+        connector.cleanup()
+        await connector.maybeRefreshToken()
+      }
+    }
+    await sleep(1000 * 60 * 5) // 5 minutes
+  }
+}
+
 if (import.meta.main) {
   cleanupLoop()
+  tokenRefreshLoop()
   Deno.serve(main_handler)
 }

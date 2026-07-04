@@ -1,7 +1,7 @@
+import { AppState } from '../app.ts'
 import { ChannelName } from '../connectors/types.ts'
 import { ChatMessagesRequest, ConnectRequest } from './schema.ts'
 import { type } from 'arktype'
-import { connectors } from '../connectors/utils.ts'
 
 export function main_handler(req: Request): Promise<Response> {
   const url = new URL(req.url)
@@ -42,7 +42,7 @@ async function chat_connect(req: Request): Promise<Response> {
     )
   }
 
-  const connector = connectors.get(body.server)
+  const connector = AppState.connectors.get(body.server)
   if (!connector) {
     return Promise.resolve(
       new Response(JSON.stringify({ errors: ['Unsupported chat server'] }), {
@@ -78,7 +78,7 @@ function chat_messages(req: Request): Promise<Response> {
     )
   }
 
-  const connector = connectors.get(params.server)
+  const connector = AppState.connectors.get(params.server)
   if (!connector) {
     return Promise.resolve(
       new Response(JSON.stringify({ errors: ['Unsupported chat server'] }), {

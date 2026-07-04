@@ -13,6 +13,7 @@ export interface ChatConnector {
     channel: ChannelName,
   ): 'connected' | 'disconnected' | 'connecting'
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
+  maybeRefreshToken(): Promise<void>
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }
