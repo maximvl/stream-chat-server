@@ -215,16 +215,17 @@ class TwitchConnector {
 
   parseAttrs(attrsStr: string): Record<string, string> {
     const parts = attrsStr.split(';')
-    const filered = parts.filter(
-      (p) =>
-        p.startsWith('color=') ||
-        p.startsWith('badges=') ||
-        p.startsWith('display-name=') ||
-        p.startsWith('msg-id=') ||
-        p.startsWith('subscriber=') ||
-        p.startsWith('vip=') ||
-        p.startsWith('mod='),
-    )
+    const keys = new Set([
+      'color',
+      'badges',
+      'display-name',
+      'id',
+      'tmi-sent-ts',
+      'subscriber',
+      'vip',
+      'mod',
+    ])
+    const filered = parts.filter((p) => keys.has(p.split('=')[0]))
 
     const result: Record<string, string> = {}
     for (const badge of filered) {
