@@ -1,10 +1,20 @@
 import {
+  LogLevel,
   TWITCH_CLIENT_ID,
   TWITCH_OAUTH_TOKEN,
   TWITCH_USERNAME,
 } from '../../config.ts'
-import { LogLevel, myLog, sleep } from '../../utils.ts'
-import { ChannelName, ChatConnector, ChatServer } from '../types.ts'
+import { myLog, sleep } from '../../utils.ts'
+import { MessageStorage } from '../messageStorage.ts'
+import {
+  ChannelName,
+  ChatConnector,
+  ChatMessage,
+  ChatServer,
+  ChatUser,
+  MessageId,
+  UserId,
+} from '../types.ts'
 import {
   BadgeResponseSchema,
   BadgeVersion,
@@ -20,29 +30,25 @@ type RawMsg = {
   message: string | null
 }
 
-type ParsedMsg = {
-  user: string
-  badges: Record<string, string>
-  attrs: Record<string, string>
-  channel: string
-  message: string
-}
-
 type BoardcasterId = string & { readonly __brand: unique symbol }
 
-class TwitchConnector implements ChatConnector {
+export class TwitchConnector implements ChatConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
+
   channelsMap: Map<ChannelName, InternalChannelId> = new Map()
   reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
 
-  broadcastersMap: Map<ChannelName, BoardcasterId> = new Map()
+  broadcasterByChannel: Map<ChannelName, BoardcasterId> = new Map()
 
   connectingChannels: Set<ChannelName> = new Set()
 
   globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
   badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
     new Map()
+
+  messages: Map<ChannelName, MessageStorage> = new Map()
+  usersById: Map<UserId, ChatUser> = new Map()
 
   constructor() {
     this.fetch_badges().then((badges) => {
@@ -69,6 +75,10 @@ class TwitchConnector implements ChatConnector {
 
     this.connectingChannels.add(channel)
 
+    if (!this.messages.has(channel)) {
+      this.messages.set(channel, new MessageStorage())
+    }
+
     const channelBadges = await this.fetch_badges(channel)
     this.badgesByChannel.set(channel, channelBadges)
 
@@ -79,6 +89,15 @@ class TwitchConnector implements ChatConnector {
     this.reverseChannelsMap.set(channelId, channelLower)
 
     this.websocketSend(`JOIN ${channelId}`)
+  }
+
+  disconnect(channel: ChannelName): void {
+    const channelId = this.channelsMap.get(channel)
+    if (channelId) {
+      this.websocketSend(`PART ${channelId}`)
+    }
+    this.connectingChannels.delete(channel)
+    this.messages.delete(channel)
   }
 
   websocketSend(message: string) {
@@ -155,24 +174,32 @@ class TwitchConnector implements ChatConnector {
         continue
       }
       if (trimmed) {
-        this.parseMessage(trimmed)
+        const msg = this.parseMessage(trimmed)
+        if (msg) {
+          let storage = this.messages.get(msg.channel)
+          if (!storage) {
+            storage = new MessageStorage()
+            this.messages.set(msg.channel, storage)
+          }
+          storage.addMessage(msg)
+        }
       }
     }
   }
 
-  parseMessage(msg: string) {
+  parseMessage(msg: string): ChatMessage | null {
     const parts = msg.split(' ')
 
     if (parts.length === 3 && parts[1] === 'JOIN') {
       const channel = this.reverseChannelsMap.get(parts[2] as InternalChannelId)
       this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
       this.connectingChannels.delete(channel!)
-      return
+      return null
     }
 
     const privMsgIndex = parts.indexOf('PRIVMSG')
     if (privMsgIndex === -1) {
-      return
+      return null
     }
 
     const rawMsg: RawMsg = {
@@ -194,7 +221,7 @@ class TwitchConnector implements ChatConnector {
     }
 
     if (!rawMsg.userPart || !rawMsg.channelPart || !rawMsg.message) {
-      return
+      return null
     }
 
     const attrs = this.parseAttrs(rawMsg.attrsPart)
@@ -203,14 +230,29 @@ class TwitchConnector implements ChatConnector {
     delete attrs['badges']
     const badges = this.parseBadges(badgeStr)
 
-    const parsed: ParsedMsg = {
-      user: rawMsg.userPart.split('!')[0].slice(1),
-      badges,
-      attrs,
-      channel: rawMsg.channelPart,
-      message: rawMsg.message.slice(1),
+    const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
+
+    if (!this.usersById.has(username)) {
+      this.usersById.set(username, {
+        id: username,
+        displayName: username,
+        twitch_fields: {
+          badges,
+          attrs,
+        },
+      })
     }
-    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(parsed)}`)
+
+    const message: ChatMessage = {
+      id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
+      timestamp: Temporal.Now.instant().epochMilliseconds,
+      userId: username,
+      server: 'twitch',
+      channel: rawMsg.channelPart as ChannelName,
+      text: rawMsg.message.slice(1),
+    }
+    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
+    return message
   }
 
   parseAttrs(attrsStr: string): Record<string, string> {
@@ -259,7 +301,7 @@ class TwitchConnector implements ChatConnector {
   }
 
   async fetch_broadcaster_id(channel: ChannelName): Promise<BoardcasterId> {
-    const existingId = this.broadcastersMap.get(channel)
+    const existingId = this.broadcasterByChannel.get(channel)
     if (existingId) {
       return existingId
     }
@@ -272,7 +314,7 @@ class TwitchConnector implements ChatConnector {
     )
     const data = await response.json()
     const id = UserResponseSchema.assert(data).data[0].id as BoardcasterId
-    this.broadcastersMap.set(channel, id)
+    this.broadcasterByChannel.set(channel, id)
     return id
   }
 
@@ -315,6 +357,17 @@ class TwitchConnector implements ChatConnector {
       params.versionId,
     )
   }
-}
 
-export const twitchConnector = new TwitchConnector()
+  cleanup(): void {
+    const now = Temporal.Now.instant()
+    const disconnectCutoff = now.subtract(
+      Temporal.Duration.from({ minutes: 30 }),
+    )
+    for (const [channel, storage] of this.messages.entries()) {
+      storage.clearOldMessages()
+      if (storage.lastReadAt > disconnectCutoff) {
+        this.disconnect(channel)
+      }
+    }
+  }
+}

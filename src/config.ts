@@ -1,5 +1,14 @@
 import { load } from '@std/dotenv'
-import { LogLevel } from './utils.ts'
+
+export type LogLevel = number & {
+  readonly __logLevel: unique symbol
+}
+
+export const LogLevel = {
+  DEBUG: 1 as LogLevel,
+  VERBOSE: 2 as LogLevel,
+  ALL: 3 as LogLevel,
+} as const
 
 const env = await load({
   // optional: choose a specific path (defaults to ".env")
