@@ -7,3 +7,8 @@ export const ConnectRequest = type({
   server: ChatServer,
   channel: 'string',
 })
+
+export const ChatStatusRequest = type({
+  server: ChatServer,
+  channel: 'string',
+})

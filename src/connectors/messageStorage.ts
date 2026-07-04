@@ -26,7 +26,7 @@ export class MessageStorage {
     const now = Temporal.Now.instant()
     const removeInteval = Temporal.Duration.from({ minutes: 30 })
     const cutoff = now.subtract(removeInteval)
-    if (this.lastReadAt < cutoff) {
+    if (Temporal.Instant.compare(this.lastReadAt, cutoff) < 0) {
       this.clear()
     }
   }

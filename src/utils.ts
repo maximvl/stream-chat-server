@@ -5,7 +5,8 @@ export async function sleep(ms: number) {
 }
 
 export function myLog(level: LogLevel, ...args: unknown[]) {
+  const timestamp = Temporal.Now.instant().toString({ smallestUnit: 'seconds' })
   if (level <= LOG_LEVEL) {
-    console.log(...args)
+    console.log(`[${timestamp}]`, ...args)
   }
 }

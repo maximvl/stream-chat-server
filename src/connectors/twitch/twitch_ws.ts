@@ -41,14 +41,15 @@ export class TwitchConnector implements ChatConnector {
 
   broadcasterByChannel: Map<ChannelName, BoardcasterId> = new Map()
 
-  connectingChannels: Set<ChannelName> = new Set()
-
   globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
   badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
     new Map()
 
   messages: Map<ChannelName, MessageStorage> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
+
+  channelStatus: Map<ChannelName, 'connected' | 'disconnected' | 'connecting'> =
+    new Map()
 
   constructor() {
     this.fetch_badges().then((badges) => {
@@ -60,7 +61,7 @@ export class TwitchConnector implements ChatConnector {
     myLog(level, `[${this.server}] ${msg}`)
   }
 
-  async connect(channel: ChannelName) {
+  async connect(channel: ChannelName): Promise<void> {
     if (!this.websocket) {
       await this.initWebsocket()
     }
@@ -69,11 +70,12 @@ export class TwitchConnector implements ChatConnector {
       return
     }
 
-    if (this.connectingChannels.has(channel)) {
+    const status = this.channelStatus.get(channel)
+    if (status === 'connecting' || status === 'connected') {
       return
     }
 
-    this.connectingChannels.add(channel)
+    this.channelStatus.set(channel, 'connecting')
 
     if (!this.messages.has(channel)) {
       this.messages.set(channel, new MessageStorage())
@@ -92,11 +94,12 @@ export class TwitchConnector implements ChatConnector {
   }
 
   disconnect(channel: ChannelName): void {
+    this.log(LogLevel.DEBUG, `Disconnecting from channel: ${channel}`)
     const channelId = this.channelsMap.get(channel)
     if (channelId) {
       this.websocketSend(`PART ${channelId}`)
     }
-    this.connectingChannels.delete(channel)
+    this.channelStatus.delete(channel)
     this.messages.delete(channel)
   }
 
@@ -192,8 +195,10 @@ export class TwitchConnector implements ChatConnector {
 
     if (parts.length === 3 && parts[1] === 'JOIN') {
       const channel = this.reverseChannelsMap.get(parts[2] as InternalChannelId)
-      this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
-      this.connectingChannels.delete(channel!)
+      if (channel) {
+        this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
+        this.channelStatus.set(channel, 'connected')
+      }
       return null
     }
 
@@ -248,7 +253,7 @@ export class TwitchConnector implements ChatConnector {
       timestamp: Temporal.Now.instant().epochMilliseconds,
       userId: username,
       server: 'twitch',
-      channel: rawMsg.channelPart as ChannelName,
+      channel: rawMsg.channelPart.slice(1) as ChannelName,
       text: rawMsg.message.slice(1),
     }
     this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
@@ -361,13 +366,21 @@ export class TwitchConnector implements ChatConnector {
   cleanup(): void {
     const now = Temporal.Now.instant()
     const disconnectCutoff = now.subtract(
-      Temporal.Duration.from({ minutes: 30 }),
+      Temporal.Duration.from({ minutes: 1 }),
     )
+    this.log(LogLevel.DEBUG, `Cleaning up channels`)
     for (const [channel, storage] of this.messages.entries()) {
-      storage.clearOldMessages()
-      if (storage.lastReadAt > disconnectCutoff) {
+      if (Temporal.Instant.compare(storage.lastReadAt, disconnectCutoff) < 0) {
         this.disconnect(channel)
+      } else {
+        storage.clearOldMessages()
       }
     }
+  }
+
+  getChannelStatus(
+    channel: ChannelName,
+  ): 'connected' | 'disconnected' | 'connecting' {
+    return this.channelStatus.get(channel) || 'disconnected'
   }
 }
