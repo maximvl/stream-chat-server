@@ -4,7 +4,7 @@ import {
   TWITCH_OAUTH_TOKEN,
   TWITCH_USERNAME,
 } from '../../config.ts'
-import { TwitchTokenManager } from '../../tokens/twitch_manager.ts'
+import { TwitchTokenManager } from './token_manager.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import {

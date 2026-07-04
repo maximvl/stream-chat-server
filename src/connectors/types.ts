@@ -38,3 +38,8 @@ export type ChatUser = {
   displayName: string
   twitch_fields?: TwitchFields
 }
+
+export interface TokenManager {
+  getToken(): string
+  maybeRefreshToken(): Promise<void>
+}

@@ -1,10 +1,10 @@
-import { LogLevel, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN } from '../config.ts'
+import { LogLevel, TWITCH_CLIENT_ID, TWITCH_OAUTH_TOKEN } from '../../config.ts'
 import { type } from 'arktype'
-import { db } from '../db/db.ts'
-import { tokensTable } from '../db/schema.ts'
+import { db } from '../../db/db.ts'
+import { tokensTable } from '../../db/schema.ts'
 import { eq } from 'drizzle-orm'
-import { myLog } from '../utils.ts'
-import { TokenManager } from './types.ts'
+import { myLog } from '../../utils.ts'
+import { TokenManager } from '../types.ts'
 
 export class TwitchTokenManager implements TokenManager {
   accessToken: string | null = null
