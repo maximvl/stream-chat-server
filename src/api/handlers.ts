@@ -1,5 +1,9 @@
 import { ChannelName } from '../connectors/types.ts'
-import { ChatStatusRequest, ConnectRequest } from './schema.ts'
+import {
+  ChatMessagesRequest,
+  ChatStatusRequest,
+  ConnectRequest,
+} from './schema.ts'
 import { type } from 'arktype'
 import { connectors } from '../connectors/utils.ts'
 
@@ -28,6 +32,9 @@ const routes: Record<
   },
   '/api/chat_status': {
     GET: chat_status,
+  },
+  '/api/chat_messages': {
+    GET: chat_messages,
   },
 }
 
@@ -92,6 +99,44 @@ function chat_status(req: Request): Promise<Response> {
   return Promise.resolve(
     Response.json({
       status,
+    }),
+  )
+}
+
+function chat_messages(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const params = ChatMessagesRequest({
+    server: url.searchParams.get('server'),
+    channel: url.searchParams.get('channel'),
+    tsFrom: url.searchParams.get('tsFrom'),
+  })
+  if (params instanceof type.errors) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ errors: params.issues }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+
+  const connector = connectors.get(params.server)
+  if (!connector) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ errors: ['Unsupported chat server'] }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+
+  const messages = connector.getMessages(
+    params.channel as ChannelName,
+    params.tsFrom,
+  )
+
+  return Promise.resolve(
+    Response.json({
+      messages,
     }),
   )
 }

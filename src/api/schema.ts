@@ -12,3 +12,17 @@ export const ChatStatusRequest = type({
   server: ChatServer,
   channel: 'string',
 })
+
+const Timestamp = type('string').pipe((value, ctx) => {
+  const timestamp = parseInt(value)
+  if (!isFinite(timestamp)) {
+    return ctx.error('must be an integer')
+  }
+  return timestamp
+}).to('number')
+
+export const ChatMessagesRequest = type({
+  server: ChatServer,
+  channel: 'string',
+  tsFrom: Timestamp,
+})

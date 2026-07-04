@@ -250,7 +250,7 @@ export class TwitchConnector implements ChatConnector {
 
     const message: ChatMessage = {
       id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
-      timestamp: Temporal.Now.instant().epochMilliseconds,
+      timestampMs: Temporal.Now.instant().epochMilliseconds,
       userId: username,
       server: 'twitch',
       channel: rawMsg.channelPart.slice(1) as ChannelName,
@@ -382,5 +382,13 @@ export class TwitchConnector implements ChatConnector {
     channel: ChannelName,
   ): 'connected' | 'disconnected' | 'connecting' {
     return this.channelStatus.get(channel) || 'disconnected'
+  }
+
+  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
+    const storage = this.messages.get(channel)
+    if (!storage) {
+      return []
+    }
+    return storage.getMessagesAfter(tsFrom)
   }
 }

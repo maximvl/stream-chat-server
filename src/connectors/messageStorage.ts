@@ -15,7 +15,7 @@ export class MessageStorage {
 
   getMessagesAfter(timestamp: number) {
     this.lastReadAt = Temporal.Now.instant()
-    return this.messages.filter((message) => message.timestamp > timestamp)
+    return this.messages.filter((message) => message.timestampMs > timestamp)
   }
 
   clear() {

@@ -12,6 +12,7 @@ export interface ChatConnector {
   getChannelStatus(
     channel: ChannelName,
   ): 'connected' | 'disconnected' | 'connecting'
+  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }
@@ -25,7 +26,7 @@ export type TwitchFields = {
 export type ChatMessage = {
   id: MessageId
   userId: UserId
-  timestamp: number
+  timestampMs: number
   text: string
   server: ChatServer
   channel: ChannelName
