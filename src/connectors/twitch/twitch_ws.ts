@@ -1,12 +1,21 @@
-import { TWITCH_OAUTH_TOKEN, TWITCH_USERNAME } from '../config.ts'
-import { LogLevel, myLog, sleep } from '../utils.ts'
-import { ChatChannel, ChatServer } from './types.ts'
+import {
+  TWITCH_CLIENT_ID,
+  TWITCH_OAUTH_TOKEN,
+  TWITCH_USERNAME,
+} from '../../config.ts'
+import { LogLevel, myLog, sleep } from '../../utils.ts'
+import { ChannelName, ChatServer } from '../types.ts'
+import {
+  BadgeResponseSchema,
+  BadgeVersion,
+  UserResponseSchema,
+} from './schemas.ts'
 
 type ChannelId = string & { readonly __brand: unique symbol }
 
 type RawMsg = {
   userPart: string | null
-  badgesPart: string
+  attrsPart: string
   channelPart: string | null
   message: string | null
 }
@@ -14,6 +23,7 @@ type RawMsg = {
 type ParsedMsg = {
   user: string
   badges: Record<string, string>
+  attrs: Record<string, string>
   channel: string
   message: string
 }
@@ -21,18 +31,26 @@ type ParsedMsg = {
 class TwitchConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
-  channelsMap: Map<ChatChannel, ChannelId> = new Map()
-  reverseChannelsMap: Map<ChannelId, ChatChannel> = new Map()
+  channelsMap: Map<ChannelName, ChannelId> = new Map()
+  reverseChannelsMap: Map<ChannelId, ChannelName> = new Map()
 
-  connectingChannels: Set<ChatChannel> = new Set()
+  connectingChannels: Set<ChannelName> = new Set()
 
-  constructor() {}
+  globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
+  badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
+    new Map()
+
+  constructor() {
+    this.fetch_badges().then((badges) => {
+      this.globalBadges = badges
+    })
+  }
 
   log(level: LogLevel, msg: string) {
     myLog(level, `[${this.server}] ${msg}`)
   }
 
-  async connect(channel: ChatChannel) {
+  async connect(channel: ChannelName) {
     if (!this.websocket) {
       await this.initWebsocket()
     }
@@ -47,7 +65,10 @@ class TwitchConnector {
 
     this.connectingChannels.add(channel)
 
-    const channelLower = channel.toLowerCase() as ChatChannel
+    const channelBadges = await this.fetch_badges(channel)
+    this.badgesByChannel.set(channel, channelBadges)
+
+    const channelLower = channel.toLowerCase() as ChannelName
     const channelId = `#${channelLower}` as ChannelId
 
     this.channelsMap.set(channelLower, channelId)
@@ -152,7 +173,7 @@ class TwitchConnector {
 
     const rawMsg: RawMsg = {
       userPart: null,
-      badgesPart: '',
+      attrsPart: '',
       message: null,
       channelPart: null,
     }
@@ -162,7 +183,7 @@ class TwitchConnector {
       rawMsg.channelPart = parts[2].toLowerCase()
       rawMsg.message = parts.slice(3).join(' ')
     } else if (privMsgIndex === 2) {
-      rawMsg.badgesPart = parts[0]
+      rawMsg.attrsPart = parts[0]
       rawMsg.userPart = parts[1]
       rawMsg.channelPart = parts[3].toLowerCase()
       rawMsg.message = parts.slice(4).join(' ')
@@ -172,21 +193,28 @@ class TwitchConnector {
       return
     }
 
+    const attrs = this.parseAttrs(rawMsg.attrsPart)
+
+    const badgeStr = attrs['badges'] ?? ''
+    delete attrs['badges']
+    const badges = this.parseBadges(badgeStr)
+
     const parsed: ParsedMsg = {
       user: rawMsg.userPart.split('!')[0].slice(1),
-      badges: this.parseBadges(rawMsg.badgesPart),
+      badges,
+      attrs,
       channel: rawMsg.channelPart,
       message: rawMsg.message.slice(1),
     }
     this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(parsed)}`)
   }
 
-  parseBadges(badgesStr: string): Record<string, string> {
-    const parts = badgesStr.split(';')
+  parseAttrs(attrsStr: string): Record<string, string> {
+    const parts = attrsStr.split(';')
     const filered = parts.filter(
       (p) =>
         p.startsWith('color=') ||
-        p.startsWith('badge=') ||
+        p.startsWith('badges=') ||
         p.startsWith('display-name=') ||
         p.startsWith('msg-id=') ||
         p.startsWith('subscriber=') ||
@@ -203,6 +231,77 @@ class TwitchConnector {
       result[split[0]] = split[1]
     }
     return result
+  }
+
+  parseBadges(badgeValue: string): Record<string, string> {
+    const parts = badgeValue.split(',')
+    const result: Record<string, string> = {}
+    for (const badge of parts) {
+      const split = badge.split('/')
+      if (split.length !== 2) {
+        continue
+      }
+      result[split[0]] = split[1]
+    }
+    return result
+  }
+
+  web_auth_headers() {
+    return {
+      Authorization: `Bearer ${TWITCH_OAUTH_TOKEN}`,
+      'Client-Id': TWITCH_CLIENT_ID,
+    }
+  }
+
+  async fetch_broadcaster_id(channel: ChannelName): Promise<string> {
+    const response = await fetch(
+      `https://api.twitch.tv/helix/users?login=${channel}`,
+      {
+        headers: this.web_auth_headers(),
+      },
+    )
+    const data = await response.json()
+    return UserResponseSchema.assert(data).data[0].id
+  }
+
+  async fetch_badges(channel?: ChannelName) {
+    const broadcasterId = channel
+      ? await this.fetch_broadcaster_id(channel)
+      : undefined
+    const url = broadcasterId
+      ? `https://api.twitch.tv/helix/chat/badges?broadcaster_id=${broadcasterId}`
+      : 'https://api.twitch.tv/helix/chat/badges/global'
+
+    const response = await fetch(
+      url,
+      {
+        headers: this.web_auth_headers(),
+      },
+    )
+    const data = await response.json()
+    const badgesData = BadgeResponseSchema.assert(data).data
+    const badgesDict: Map<string, Map<string, BadgeVersion>> = new Map()
+    for (const badge of badgesData) {
+      badgesDict.set(
+        badge.set_id,
+        new Map(badge.versions.map((v) => [v.id, v])),
+      )
+    }
+    return badgesDict
+  }
+
+  getBadge(params: {
+    channel: ChannelName
+    setId: string
+    versionId: string
+  }): BadgeVersion | undefined {
+    const set = this.globalBadges.get(params.setId)
+    if (set) {
+      return set.get(params.versionId)
+    }
+    return this.badgesByChannel.get(params.channel)?.get(params.setId)?.get(
+      params.versionId,
+    )
   }
 }
 

@@ -1,5 +1,5 @@
-import { twitchConnector } from './connector/twitch_ws.ts'
-import { ChatChannel } from './connector/types.ts'
+import { twitchConnector } from './connectors/twitch/twitch_ws.ts'
+import { ChannelName } from './connectors/types.ts'
 
 export function handler(req: Request): Response {
   const url = new URL(req.url)
@@ -17,6 +17,6 @@ export function handler(req: Request): Response {
 }
 
 if (import.meta.main) {
-  twitchConnector.connect('segall' as ChatChannel)
+  twitchConnector.connect('segall' as ChannelName)
   Deno.serve(handler)
 }

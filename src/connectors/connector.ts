@@ -1,4 +1,4 @@
-import { ChatChannel, ChatConnection, ChatServer } from './types.ts'
+import { ChannelName, ChatConnection, ChatServer } from './types.ts'
 
 export class ChatConnector {
   server: ChatServer
@@ -8,7 +8,7 @@ export class ChatConnector {
     this.server = server
   }
 
-  connect(channel: ChatChannel) {
+  connect(channel: ChannelName) {
     if (!this.websocket) {
       this.websocket = new WebSocket(`wss://${this.server}/${channel}`)
     }
