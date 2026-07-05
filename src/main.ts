@@ -17,7 +17,6 @@ async function tokenRefreshLoop() {
   while (true) {
     for (const [_server, connector] of AppState.connectors.entries()) {
       if (connector) {
-        connector.cleanup()
         await connector.maybeRefreshToken()
       }
     }
