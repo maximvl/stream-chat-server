@@ -25,3 +25,5 @@ export const TWITCH_CLIENT_ID = env.TWITCH_CLIENT_ID || ''
 export const LOG_LEVEL = Number(env.LOG_LEVEL) || LogLevel.ALL
 
 export const DB_FILE = 'file:db.sqlite'
+
+export const WEBSERVER_PORT = Number(env.PORT) || 8000
