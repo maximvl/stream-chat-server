@@ -27,3 +27,4 @@ export const LOG_LEVEL = Number(env.LOG_LEVEL) || LogLevel.ALL
 export const DB_FILE = 'file:db.sqlite'
 
 export const WEBSERVER_PORT = Number(env.PORT) || 8000
+export const WEBSERVER_HOST = env.IP || '0.0.0.0'
