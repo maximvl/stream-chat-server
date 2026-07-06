@@ -30,3 +30,6 @@ export const DB_FILE = getEnv('DB_FILE') || 'file:db.sqlite'
 
 export const WEBSERVER_PORT = Number(getEnv('PORT')) || 8000
 export const WEBSERVER_HOST = getEnv('IP') || '0.0.0.0'
+
+export const DISABLED_CONNECTORS = getEnv('DISABLED_CONNECTORS')?.split(',') ||
+  []

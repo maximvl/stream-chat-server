@@ -1,7 +1,13 @@
 import { sleep } from './utils.ts'
 import { main_handler } from './api/handlers.ts'
 import { AppState } from './app.ts'
-import { WEBSERVER_HOST, WEBSERVER_PORT } from './config.ts'
+import {
+  DISABLED_CONNECTORS,
+  WEBSERVER_HOST,
+  WEBSERVER_PORT,
+} from './config.ts'
+import { TwitchConnector } from './connectors/twitch/twitch_ws.ts'
+import { VkVideoConnector } from './connectors/vkvideo/vkvideo_ws.ts'
 
 async function cleanupLoop() {
   while (true) {
@@ -25,6 +31,13 @@ async function tokenRefreshLoop() {
 }
 
 if (import.meta.main) {
+  if (!DISABLED_CONNECTORS.includes('twitch')) {
+    AppState.connectors.set('twitch', new TwitchConnector())
+  }
+  if (!DISABLED_CONNECTORS.includes('vkvideo')) {
+    AppState.connectors.set('vkvideo', new VkVideoConnector())
+  }
+
   cleanupLoop()
   tokenRefreshLoop()
   Deno.serve({ port: WEBSERVER_PORT, hostname: WEBSERVER_HOST }, main_handler)
