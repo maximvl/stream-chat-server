@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1783190137501,
-      "tag": "0000_aspiring_shiver_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1783190319590,
-      "tag": "0001_watery_firelord",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1783191298115,
-      "tag": "0002_solid_bloodstrike",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1783192232538,
-      "tag": "0003_fuzzy_timeslip",
+      "when": 1783301114763,
+      "tag": "0000_deep_silhouette",
       "breakpoints": true
     }
   ]

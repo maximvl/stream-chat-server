@@ -1,4 +1,4 @@
-import { LogLevel, TWITCH_CLIENT_ID, TWITCH_USERNAME } from '../../config.ts'
+import { LogLevel, TWITCH_CLIENT_ID } from '../../config.ts'
 import { TwitchTokenManager } from './token_manager.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
@@ -53,6 +53,8 @@ export class TwitchConnector implements ChatConnector {
   constructor() {
     this.fetch_badges().then((badges) => {
       this.globalBadges = badges
+    }).catch((error) => {
+      this.log(LogLevel.DEBUG, `Failed to fetch global badges: ${error}`)
     })
   }
 
@@ -80,8 +82,18 @@ export class TwitchConnector implements ChatConnector {
       this.messages.set(channel, new MessageStorage())
     }
 
-    const channelBadges = await this.fetch_badges(channel)
-    this.badgesByChannel.set(channel, channelBadges)
+    // Badges are supplementary metadata - if Helix is flaky we still want to
+    // join the channel and read messages instead of getting stuck forever in
+    // the 'connecting' state.
+    try {
+      const channelBadges = await this.fetch_badges(channel)
+      this.badgesByChannel.set(channel, channelBadges)
+    } catch (error) {
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to fetch badges for channel ${channel}: ${error}`,
+      )
+    }
 
     const channelLower = channel.toLowerCase() as ChannelName
     const channelId = `#${channelLower}` as InternalChannelId
@@ -144,8 +156,12 @@ export class TwitchConnector implements ChatConnector {
       `ws state: ${this.websocket?.readyState} (expected: ${WebSocket.OPEN})`,
     )
 
-    this.websocketSend(`PASS oauth:${this.tokenManager.accessToken}`)
-    this.websocketSend(`NICK ${TWITCH_USERNAME}`)
+    // Anonymous read-only login: we never send chat messages, so there's no
+    // need for a real Twitch account/OAuth token to join channels and read
+    // messages (badges/attrs arrive via IRC tags regardless of auth).
+    const anonymousNick = `justinfan${Math.floor(Math.random() * 100000)}`
+    this.websocketSend('PASS just_a_password')
+    this.websocketSend(`NICK ${anonymousNick}`)
     this.websocketSend('CAP REQ :twitch.tv/tags')
   }
 
@@ -297,9 +313,10 @@ export class TwitchConnector implements ChatConnector {
     return result
   }
 
-  web_auth_headers() {
+  async web_auth_headers() {
+    const accessToken = await this.tokenManager.getAccessToken()
     return {
-      Authorization: `Bearer ${this.tokenManager.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       'Client-Id': TWITCH_CLIENT_ID,
     }
   }
@@ -313,7 +330,7 @@ export class TwitchConnector implements ChatConnector {
     const response = await fetch(
       `https://api.twitch.tv/helix/users?login=${channel}`,
       {
-        headers: this.web_auth_headers(),
+        headers: await this.web_auth_headers(),
       },
     )
     const data = await response.json()
@@ -333,7 +350,7 @@ export class TwitchConnector implements ChatConnector {
     const response = await fetch(
       url,
       {
-        headers: this.web_auth_headers(),
+        headers: await this.web_auth_headers(),
       },
     )
 

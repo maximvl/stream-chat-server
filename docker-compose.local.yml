@@ -1,0 +1,20 @@
+services:
+  stream-chat-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stream-chat-server-local
+    environment:
+      - PORT=8000
+      - DB_FILE=file:/app/data/db.sqlite
+      - LOG_LEVEL=3
+    env_file:
+      - path: ./.env.local
+        required: false
+    ports:
+      - '8095:8000'
+    volumes:
+      - stream_chat_data:/app/data
+
+volumes:
+  stream_chat_data:
