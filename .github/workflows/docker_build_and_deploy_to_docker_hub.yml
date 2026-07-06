@@ -2,7 +2,8 @@ name: Docker build and deploy to docker hub
 
 on:
   push:
-    branches: ['main']
+    # TODO: switch back to 'main' once the migration branch is merged
+    branches: ['migration']
 
 concurrency:
   group: docker-build-${{ github.ref }}
