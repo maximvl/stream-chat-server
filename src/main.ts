@@ -8,6 +8,7 @@ import {
 } from './config.ts'
 import { TwitchConnector } from './connectors/twitch/twitch_ws.ts'
 import { VkVideoConnector } from './connectors/vkvideo/vkvideo_ws.ts'
+import { KickConnector } from './connectors/kick/kick_ws.ts'
 
 async function cleanupLoop() {
   while (true) {
@@ -36,6 +37,9 @@ if (import.meta.main) {
   }
   if (!DISABLED_CONNECTORS.includes('vkvideo')) {
     AppState.connectors.set('vkvideo', new VkVideoConnector())
+  }
+  if (!DISABLED_CONNECTORS.includes('kick')) {
+    AppState.connectors.set('kick', new KickConnector())
   }
 
   cleanupLoop()
