@@ -52,15 +52,28 @@ export type ChatMessage = {
   vkFields?: VkMessageFields
 }
 
-export type UserTwitchFields = {
+export type TwitchUserFields = {
   badges: Record<string, string>
   attrs: Record<string, string>
+}
+
+export type KickBadge = {
+  name: string
+  badgeType: string
+  imageUrl?: string
+  selected: boolean
+}
+
+export type KickUserFields = {
+  color: string
+  badges: KickBadge[]
 }
 
 export type ChatUser = {
   id: UserId
   displayName: string
-  twitchFields?: UserTwitchFields
+  twitchFields?: TwitchUserFields
+  kickFields?: KickUserFields
 }
 
 export interface TokenManager {

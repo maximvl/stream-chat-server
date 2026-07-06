@@ -6,6 +6,7 @@ import {
   ChatMessage,
   ChatUser,
   ConnectorStatus,
+  KickBadge,
   MessageId,
   UserId,
 } from '../types.ts'
@@ -149,9 +150,32 @@ export class KickConnector implements ChatConnector {
       return
     }
 
+    const badges: KickBadge[] = []
+    for (const badge of chatMsgData.sender.identity.badges_v2) {
+      badges.push({
+        name: badge.name,
+        badgeType: badge.badge_type,
+        imageUrl: badge.image_url,
+        selected: badge.selected,
+      })
+    }
+
+    for (const badge of chatMsgData.sender.identity.badges) {
+      badges.push({
+        name: badge.text,
+        badgeType: badge.type,
+        imageUrl: undefined,
+        selected: false,
+      })
+    }
+
     const user: ChatUser = {
       id: chatMsgData.sender.id.toString() as UserId,
       displayName: chatMsgData.sender.username,
+      kickFields: {
+        color: chatMsgData.sender.identity.color,
+        badges,
+      },
     }
 
     const msg: ChatMessage = {
@@ -250,7 +274,20 @@ export class KickConnector implements ChatConnector {
   }
 
   disconnect(channel: ChannelName): void {
-    throw new Error('Method not implemented.')
+    this.channelStatus.delete(channel)
+    this.messages.delete(channel)
+
+    const channelId = this.channelsMap.get(channel)
+    if (!channelId) {
+      return
+    }
+
+    this.websocket?.send(JSON.stringify({
+      event: 'pusher:unsubscribe',
+      data: {
+        channel: channelId,
+      },
+    }))
   }
 
   cleanup(): void {
