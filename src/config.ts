@@ -33,3 +33,8 @@ export const WEBSERVER_HOST = getEnv('IP') || '0.0.0.0'
 
 export const DISABLED_CONNECTORS = getEnv('DISABLED_CONNECTORS')?.split(',') ||
   []
+
+export const MAX_MESSAGES_PER_CHANNEL =
+  Number(getEnv('MAX_MESSAGE_PER_CHANNEL')) || 1000
+export const MAX_MESSAGES_RESPONSE = Number(getEnv('MAX_MESSAGES_RESPONSE')) ||
+  100

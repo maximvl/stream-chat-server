@@ -1,14 +1,13 @@
+import { MAX_MESSAGES_PER_CHANNEL } from '../config.ts'
 import { ChatMessage } from './types.ts'
 
 export class MessageStorage {
   messages: ChatMessage[] = []
   lastReadAt: Temporal.Instant = Temporal.Now.instant()
 
-  maxMessages: number = 5000
-
   addMessage(message: ChatMessage) {
     this.messages.push(message)
-    if (this.messages.length > this.maxMessages) {
+    if (this.messages.length > MAX_MESSAGES_PER_CHANNEL) {
       this.messages.shift()
     }
   }

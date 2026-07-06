@@ -1,4 +1,5 @@
 import { AppState } from '../app.ts'
+import { MAX_MESSAGES_RESPONSE } from '../config.ts'
 import { ChannelName } from '../connectors/types.ts'
 import { ChatMessagesRequest, ConnectRequest } from './schema.ts'
 import { type } from 'arktype'
@@ -108,10 +109,12 @@ function chat_messages(req: Request): Promise<Response> {
     params.tsFrom,
   )
 
+  const limited = messages.slice(0, MAX_MESSAGES_RESPONSE)
+
   return Promise.resolve(
     Response.json({
       status,
-      messages,
+      messages: limited,
     }),
   )
 }
