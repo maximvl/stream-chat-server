@@ -263,12 +263,19 @@ export class TwitchConnector implements ChatConnector {
       })
     }
 
+    const channelId = rawMsg.channelPart as InternalChannelId
+    const channel = this.reverseChannelsMap.get(channelId)
+    if (!channel) {
+      this.log(LogLevel.DEBUG, `Unknown channel: ${channelId}`)
+      return null
+    }
+
     const message: ChatMessage = {
       id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
       timestampMs: Temporal.Now.instant().epochMilliseconds,
       userId: username,
       server: 'twitch',
-      channel: rawMsg.channelPart.slice(1) as ChannelName,
+      channel,
       text: rawMsg.message.slice(1),
     }
     this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
