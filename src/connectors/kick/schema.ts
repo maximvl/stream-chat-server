@@ -33,7 +33,7 @@ export const WsChatMsgData = type({
   id: 'string',
   chatroom_id: 'number',
   content: 'string',
-  type: '"message"',
+  type: '"message" | "reply"',
   created_at: 'string',
   sender: {
     id: 'number',
