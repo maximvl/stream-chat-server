@@ -466,7 +466,7 @@ export class TwitchConnector implements ChatConnector {
     }
   }
 
-  async maybeRefreshToken(): Promise<void> {
+  async refreshToken(): Promise<void> {
     await this.tokenManager.maybeRefreshToken()
   }
 

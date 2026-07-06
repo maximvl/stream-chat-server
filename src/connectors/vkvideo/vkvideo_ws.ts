@@ -340,16 +340,11 @@ export class VkVideoConnector implements ChatConnector {
   }
 
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
-    // TODO: Implement message retrieval
     const storage = this.messages.get(channel)
     if (!storage) {
       return []
     }
     return storage.getMessagesAfter(tsFrom)
-  }
-
-  async maybeRefreshToken(): Promise<void> {
-    // no token to refresh
   }
 
   async fetchAppConfig(): Promise<void> {

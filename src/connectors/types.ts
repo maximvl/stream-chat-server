@@ -31,8 +31,9 @@ export interface ChatConnector {
   cleanup(): void
   getChannelStatus(channel: ChannelName): ChannelStatus | null
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
-  maybeRefreshToken(): Promise<void>
   getStatus(): ConnectorStatus
+  refreshToken?(): Promise<void>
+  sendPing?(): Promise<void>
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }

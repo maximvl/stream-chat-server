@@ -24,10 +24,21 @@ async function tokenRefreshLoop() {
   while (true) {
     for (const [_server, connector] of AppState.connectors.entries()) {
       if (connector) {
-        await connector.maybeRefreshToken()
+        await connector.refreshToken?.()
       }
     }
     await sleep(1000 * 60 * 5) // 5 minutes
+  }
+}
+
+async function pingLoop() {
+  while (true) {
+    for (const [_server, connector] of AppState.connectors.entries()) {
+      if (connector) {
+        await connector.sendPing?.()
+      }
+    }
+    await sleep(1000 * 60 * 1) // 1 minute
   }
 }
 
@@ -44,5 +55,6 @@ if (import.meta.main) {
 
   cleanupLoop()
   tokenRefreshLoop()
+  pingLoop()
   Deno.serve({ port: WEBSERVER_PORT, hostname: WEBSERVER_HOST }, main_handler)
 }

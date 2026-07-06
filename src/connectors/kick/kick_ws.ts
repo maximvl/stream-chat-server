@@ -198,11 +198,12 @@ export class KickConnector implements ChatConnector {
     storage.addMessage(msg)
   }
 
-  sendPing() {
+  sendPing(): Promise<void> {
     this.websocket?.send(JSON.stringify({
       event: 'pusher:ping',
       data: {},
     }))
+    return Promise.resolve()
   }
 
   async connect(channel: ChannelName): Promise<void> {
@@ -329,10 +330,6 @@ export class KickConnector implements ChatConnector {
       return []
     }
     return storage.getMessagesAfter(tsFrom)
-  }
-
-  maybeRefreshToken(): Promise<void> {
-    return Promise.resolve()
   }
 
   getStatus(): ConnectorStatus {
