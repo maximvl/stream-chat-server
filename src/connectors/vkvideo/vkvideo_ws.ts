@@ -3,6 +3,7 @@ import {
   ChannelStatus,
   ChatConnector,
   ChatMessage,
+  ChatUser,
   MessageId,
   UserId,
 } from '../types.ts'
@@ -193,9 +194,14 @@ export class VkVideoConnector implements ChatConnector {
       }
     }
 
+    const msgUser: ChatUser = {
+      id: data.author.id.toString() as UserId,
+      displayName: data.author.displayName,
+    }
+
     const msg: ChatMessage = {
       id: data.id.toString() as MessageId,
-      userId: data.author.id.toString() as UserId,
+      user: msgUser,
       timestampMs: data.createdAt * 1000,
       text: messageParts.join(' '),
       server: 'vkvideo',

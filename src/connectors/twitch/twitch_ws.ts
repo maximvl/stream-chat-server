@@ -270,10 +270,23 @@ export class TwitchConnector implements ChatConnector {
       return null
     }
 
+    const messageUser: ChatUser = {
+      id: username,
+      displayName: attrs['display-name'] ?? username,
+      twitchFields: {
+        badges,
+        attrs,
+      },
+    }
+
+    const timestampMs = attrs['tmi-sent-ts']
+      ? Number(attrs['tmi-sent-ts'])
+      : Temporal.Now.instant().epochMilliseconds
+
     const message: ChatMessage = {
       id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
-      timestampMs: Temporal.Now.instant().epochMilliseconds,
-      userId: username,
+      timestampMs,
+      user: messageUser,
       server: 'twitch',
       channel,
       text: rawMsg.message.slice(1),

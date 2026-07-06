@@ -25,7 +25,7 @@ export type VkMessageFields = {
 
 export type ChatMessage = {
   id: MessageId
-  userId: UserId
+  user: ChatUser
   timestampMs: number
   text: string
   server: ChatServer
