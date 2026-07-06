@@ -289,10 +289,13 @@ export class VkVideoConnector implements ChatConnector {
         storage.clearOldMessages()
       }
     }
+
+    if (this.channelStatus.size === 0) {
+      this.handleClose()
+    }
   }
 
   getChannelStatus(channel: ChannelName): ChannelStatus {
-    // TODO: Implement channel status check
     return this.channelStatus.get(channel) || 'disconnected'
   }
 
@@ -306,7 +309,7 @@ export class VkVideoConnector implements ChatConnector {
   }
 
   async maybeRefreshToken(): Promise<void> {
-    // TODO: Implement token refresh
+    // no token to refresh
   }
 
   async fetchAppConfig(): Promise<void> {

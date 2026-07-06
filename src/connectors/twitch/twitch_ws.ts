@@ -394,6 +394,10 @@ export class TwitchConnector implements ChatConnector {
         storage.clearOldMessages()
       }
     }
+
+    if (this.channelStatus.size === 0) {
+      this.handleClose()
+    }
   }
 
   async maybeRefreshToken(): Promise<void> {
