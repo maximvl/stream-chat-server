@@ -32,7 +32,22 @@ const routes: Record<
 }
 
 async function chat_connect(req: Request): Promise<Response> {
-  const body = ConnectRequest(await req.json())
+  let bodyJson
+  try {
+    bodyJson = await req.json()
+    if (!bodyJson) {
+      throw new Error('Invalid JSON')
+    }
+  } catch {
+    return Promise.resolve(
+      new Response(JSON.stringify({ errors: ['Invalid JSON'] }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+
+  const body = ConnectRequest(bodyJson)
   if (body instanceof type.errors) {
     return Promise.resolve(
       new Response(JSON.stringify({ errors: body.issues }), {
