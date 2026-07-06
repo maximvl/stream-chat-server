@@ -2,8 +2,7 @@ name: Docker build and deploy to docker hub
 
 on:
   push:
-    # TODO: switch back to 'main' once the migration branch is merged
-    branches: ['migration']
+    branches: ['main']
 
 concurrency:
   group: docker-build-${{ github.ref }}
@@ -44,5 +43,5 @@ jobs:
       username: ${{ secrets.USERNAME_SERVER1 }}
       password: ${{ secrets.PASSWORD_SERVER1 }}
       port: ${{ secrets.PORT_SERVER1 }}
-      server_name: "server1"
+      server_name: 'server1'
       tg_token: ${{ secrets.TG_TOKEN }}
