@@ -406,6 +406,10 @@ export class TwitchConnector implements ChatConnector {
   }
 
   cleanup(): void {
+    if (!this.websocket) {
+      return
+    }
+
     const now = Temporal.Now.instant()
     const disconnectCutoff = now.subtract(
       Temporal.Duration.from({ minutes: 30 }),
