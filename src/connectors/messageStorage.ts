@@ -29,4 +29,8 @@ export class MessageStorage {
       this.clear()
     }
   }
+
+  count() {
+    return this.messages.length
+  }
 }

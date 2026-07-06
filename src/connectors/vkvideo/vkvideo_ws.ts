@@ -4,6 +4,7 @@ import {
   ChatConnector,
   ChatMessage,
   ChatUser,
+  ConnectorStatus,
   MessageId,
   UserId,
 } from '../types.ts'
@@ -28,6 +29,7 @@ export class VkVideoConnector implements ChatConnector {
   websocketHost: string | null = null
 
   websocket: WebSocket | null = null
+  startedAtMs: number = 0
 
   messageCounter = 0
 
@@ -65,6 +67,7 @@ export class VkVideoConnector implements ChatConnector {
 
     this.websocket.onopen = () => {
       this.log(LogLevel.DEBUG, 'Connection opened')
+      this.startedAtMs = Temporal.Now.instant().epochMilliseconds
     }
     this.websocket.onmessage = (event) => {
       this.handleMessage(event)
@@ -97,6 +100,7 @@ export class VkVideoConnector implements ChatConnector {
     this.log(LogLevel.DEBUG, 'Connection closed')
     this.websocket?.close()
     this.websocket = null
+    this.startedAtMs = 0
   }
 
   handleMessage(event: MessageEvent) {
@@ -137,7 +141,16 @@ export class VkVideoConnector implements ChatConnector {
       const channel = this.subMsgChannelMap.get(subMsg.id)
       if (channel) {
         this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
-        this.channelStatus.set(channel, 'connected')
+        this.channelStatus.set(channel, {
+          channel,
+          status: 'connected',
+          joinedAtMs: Temporal.Now.instant().epochMilliseconds,
+          joinedAtStr: Temporal.Now.instant().toString({
+            smallestUnit: 'seconds',
+          }),
+          uptimeMs: 0,
+          messagesCount: 0,
+        })
         this.subMsgChannelMap.delete(subMsg.id)
       }
       return
@@ -231,16 +244,27 @@ export class VkVideoConnector implements ChatConnector {
     }
 
     const status = this.channelStatus.get(channel)
-    if (status === 'connecting' || status === 'connected') {
+    if (status?.status === 'connecting' || status?.status === 'connected') {
       return
     }
 
-    this.channelStatus.set(channel, 'connecting')
+    const channelStatus: ChannelStatus = {
+      channel,
+      status: 'connecting',
+      joinedAtMs: Temporal.Now.instant().epochMilliseconds,
+      joinedAtStr: Temporal.Now.instant().toString({
+        smallestUnit: 'seconds',
+      }),
+      uptimeMs: 0,
+      messagesCount: 0,
+    }
+
+    this.channelStatus.set(channel, channelStatus)
 
     const channelId = await this.fetchChannelId(channel)
     if (!channelId) {
       this.log(LogLevel.DEBUG, 'Failed to fetch channel ID')
-      this.channelStatus.set(channel, 'disconnected')
+      this.channelStatus.delete(channel)
       return
     }
 
@@ -305,8 +329,14 @@ export class VkVideoConnector implements ChatConnector {
     }
   }
 
-  getChannelStatus(channel: ChannelName): ChannelStatus {
-    return this.channelStatus.get(channel) || 'disconnected'
+  getChannelStatus(channel: ChannelName): ChannelStatus | null {
+    const status = this.channelStatus.get(channel)
+    if (status) {
+      status.messagesCount = this.messages.get(channel)?.count() || 0
+      status.uptimeMs = Temporal.Now.instant().epochMilliseconds -
+        status.joinedAtMs
+    }
+    return status || null
   }
 
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
@@ -361,5 +391,49 @@ export class VkVideoConnector implements ChatConnector {
     }
     const id = channelInfo.data.owner.id
     return `channel-chat:${id}` as InternalChannelId
+  }
+
+  getStatus(): ConnectorStatus {
+    const startedAtStr = this.startedAtMs > 0
+      ? Temporal.Instant.fromEpochMilliseconds(this.startedAtMs).toString({
+        smallestUnit: 'seconds',
+      })
+      : ''
+
+    const uptimeMs = this.startedAtMs > 0
+      ? Temporal.Now.instant().epochMilliseconds - this.startedAtMs
+      : 0
+
+    const status: ConnectorStatus = {
+      server: 'vkvideo',
+      status: 'disconnected',
+      startedAtMs: this.startedAtMs,
+      startedAtStr,
+      uptimeMs,
+      channels: [],
+    }
+
+    if (this.websocket) {
+      const state = this.websocket.readyState
+      switch (state) {
+        case WebSocket.OPEN:
+          status.status = 'connected'
+          break
+        case WebSocket.CONNECTING:
+          status.status = 'connecting'
+          break
+        default:
+          status.status = 'disconnected'
+      }
+    }
+
+    for (const channel of this.channelStatus.keys()) {
+      const channelStatus = this.getChannelStatus(channel)
+      if (channelStatus) {
+        status.channels.push(channelStatus)
+      }
+    }
+
+    return status
   }
 }

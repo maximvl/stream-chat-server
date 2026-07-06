@@ -9,6 +9,7 @@ import {
   ChatMessage,
   ChatServer,
   ChatUser,
+  ConnectorStatus,
   MessageId,
   UserId,
 } from '../types.ts'
@@ -50,6 +51,8 @@ export class TwitchConnector implements ChatConnector {
 
   tokenManager = new TwitchTokenManager()
 
+  startedAtMs: number = 0
+
   constructor() {
     this.fetch_badges().then((badges) => {
       this.globalBadges = badges
@@ -72,11 +75,22 @@ export class TwitchConnector implements ChatConnector {
     }
 
     const status = this.channelStatus.get(channel)
-    if (status === 'connecting' || status === 'connected') {
+    if (
+      status?.status === 'connecting' || status?.status === 'connected'
+    ) {
       return
     }
 
-    this.channelStatus.set(channel, 'connecting')
+    this.channelStatus.set(channel, {
+      channel,
+      status: 'connecting',
+      joinedAtMs: Temporal.Now.instant().epochMilliseconds,
+      joinedAtStr: Temporal.Now.instant().toString({
+        smallestUnit: 'seconds',
+      }),
+      uptimeMs: 0,
+      messagesCount: 0,
+    })
 
     if (!this.messages.has(channel)) {
       this.messages.set(channel, new MessageStorage())
@@ -134,6 +148,7 @@ export class TwitchConnector implements ChatConnector {
     })
     this.websocket.onopen = () => {
       this.log(LogLevel.DEBUG, 'Connection opened')
+      this.startedAtMs = Temporal.Now.instant().epochMilliseconds
     }
     this.websocket.onmessage = (event) => {
       this.handleMessage(event)
@@ -169,6 +184,7 @@ export class TwitchConnector implements ChatConnector {
     this.log(LogLevel.DEBUG, 'Connection closed')
     this.websocket?.close()
     this.websocket = null
+    this.startedAtMs = 0
   }
 
   handleMessage(event: MessageEvent) {
@@ -212,7 +228,16 @@ export class TwitchConnector implements ChatConnector {
       const channel = this.reverseChannelsMap.get(parts[2] as InternalChannelId)
       if (channel) {
         this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
-        this.channelStatus.set(channel, 'connected')
+        this.channelStatus.set(channel, {
+          channel,
+          status: 'connected',
+          joinedAtMs: Temporal.Now.instant().epochMilliseconds,
+          joinedAtStr: Temporal.Now.instant().toString({
+            smallestUnit: 'seconds',
+          }),
+          uptimeMs: 0,
+          messagesCount: 0,
+        })
       }
       return null
     }
@@ -445,10 +470,14 @@ export class TwitchConnector implements ChatConnector {
     await this.tokenManager.maybeRefreshToken()
   }
 
-  getChannelStatus(
-    channel: ChannelName,
-  ): 'connected' | 'disconnected' | 'connecting' {
-    return this.channelStatus.get(channel) || 'disconnected'
+  getChannelStatus(channel: ChannelName): ChannelStatus | null {
+    const status = this.channelStatus.get(channel)
+    if (status) {
+      status.messagesCount = this.messages.get(channel)?.count() || 0
+      status.uptimeMs = Temporal.Now.instant().epochMilliseconds -
+        status.joinedAtMs
+    }
+    return status || null
   }
 
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
@@ -457,5 +486,48 @@ export class TwitchConnector implements ChatConnector {
       return []
     }
     return storage.getMessagesAfter(tsFrom)
+  }
+
+  getStatus(): ConnectorStatus {
+    const startedAtStr = this.startedAtMs > 0
+      ? Temporal.Instant.fromEpochMilliseconds(this.startedAtMs).toString({
+        smallestUnit: 'seconds',
+      })
+      : ''
+
+    const uptimeMs = this.startedAtMs > 0
+      ? Temporal.Now.instant().epochMilliseconds - this.startedAtMs
+      : 0
+
+    const status: ConnectorStatus = {
+      server: 'twitch',
+      status: 'disconnected',
+      startedAtMs: this.startedAtMs,
+      startedAtStr,
+      uptimeMs,
+      channels: [],
+    }
+
+    if (this.websocket) {
+      const state = this.websocket.readyState
+      switch (state) {
+        case WebSocket.OPEN:
+          status.status = 'connected'
+          break
+        case WebSocket.CONNECTING:
+          status.status = 'connecting'
+          break
+        default:
+          status.status = 'disconnected'
+      }
+    }
+
+    for (const channel of this.channelStatus.keys()) {
+      const channelStatus = this.getChannelStatus(channel)
+      if (channelStatus) {
+        status.channels.push(channelStatus)
+      }
+    }
+    return status
   }
 }

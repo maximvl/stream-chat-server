@@ -5,15 +5,34 @@ export type ChannelName = string & { readonly __brand: unique symbol }
 
 export type ChatId = string & { readonly __brand: unique symbol }
 
-export type ChannelStatus = 'connected' | 'disconnected' | 'connecting'
+export type ConnectionStatus = 'connected' | 'disconnected' | 'connecting'
+
+export type ChannelStatus = {
+  channel: ChannelName
+  status: ConnectionStatus
+  joinedAtMs: number
+  joinedAtStr: string
+  uptimeMs: number
+  messagesCount: number
+}
+
+export type ConnectorStatus = {
+  server: ChatServer
+  status: ConnectionStatus
+  startedAtMs: number
+  startedAtStr: string
+  uptimeMs: number
+  channels: ChannelStatus[]
+}
 
 export interface ChatConnector {
   connect(channel: ChannelName): Promise<void>
   disconnect(channel: ChannelName): void
   cleanup(): void
-  getChannelStatus(channel: ChannelName): ChannelStatus
+  getChannelStatus(channel: ChannelName): ChannelStatus | null
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
   maybeRefreshToken(): Promise<void>
+  getStatus(): ConnectorStatus
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }

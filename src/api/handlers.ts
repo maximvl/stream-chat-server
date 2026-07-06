@@ -30,6 +30,9 @@ const routes: Record<
   '/api/chat_messages': {
     GET: chat_messages,
   },
+  '/api/status': {
+    GET: app_status,
+  },
 }
 
 async function chat_connect(req: Request): Promise<Response> {
@@ -117,4 +120,15 @@ function chat_messages(req: Request): Promise<Response> {
       messages: limited,
     }),
   )
+}
+
+async function app_status(_req: Request): Promise<Response> {
+  const connectors = Array.from(AppState.connectors.values())
+  const statuses = await Promise.all(
+    connectors.map((connector) => connector.getStatus()),
+  )
+
+  return Response.json({
+    connectors: statuses,
+  })
 }
