@@ -29,6 +29,7 @@ jobs:
           port: ${{ secrets.port }}
           command_timeout: 10m
           script: |
+            set -e
             cd /root/eventlab
             docker compose pull stream-chat-server
             docker compose up -d --no-deps stream-chat-server
