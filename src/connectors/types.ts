@@ -5,13 +5,13 @@ export type ChannelName = string & { readonly __brand: unique symbol }
 
 export type ChatId = string & { readonly __brand: unique symbol }
 
+export type ChannelStatus = 'connected' | 'disconnected' | 'connecting'
+
 export interface ChatConnector {
   connect(channel: ChannelName): Promise<void>
   disconnect(channel: ChannelName): void
   cleanup(): void
-  getChannelStatus(
-    channel: ChannelName,
-  ): 'connected' | 'disconnected' | 'connecting'
+  getChannelStatus(channel: ChannelName): ChannelStatus
   getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
   maybeRefreshToken(): Promise<void>
 }
@@ -19,9 +19,8 @@ export interface ChatConnector {
 export type MessageId = string & { readonly __brand: unique symbol }
 export type UserId = string & { readonly __brand: unique symbol }
 
-export type TwitchFields = {
-  badges: Record<string, string>
-  attrs: Record<string, string>
+export type VkMessageFields = {
+  mentions: string[]
 }
 
 export type ChatMessage = {
@@ -31,12 +30,18 @@ export type ChatMessage = {
   text: string
   server: ChatServer
   channel: ChannelName
+  vkFields?: VkMessageFields
+}
+
+export type UserTwitchFields = {
+  badges: Record<string, string>
+  attrs: Record<string, string>
 }
 
 export type ChatUser = {
   id: UserId
   displayName: string
-  twitch_fields?: TwitchFields
+  twitch_fields?: UserTwitchFields
 }
 
 export interface TokenManager {

@@ -4,6 +4,7 @@ import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import {
   ChannelName,
+  ChannelStatus,
   ChatConnector,
   ChatMessage,
   ChatServer,
@@ -45,8 +46,7 @@ export class TwitchConnector implements ChatConnector {
   messages: Map<ChannelName, MessageStorage> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
 
-  channelStatus: Map<ChannelName, 'connected' | 'disconnected' | 'connecting'> =
-    new Map()
+  channelStatus: Map<ChannelName, ChannelStatus> = new Map()
 
   tokenManager = new TwitchTokenManager()
 
