@@ -1,11 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0bd4ef07-da77-471e-b694-d5e5d097cd07",
+  "id": "0d7e4084-ddbc-47da-9c93-5526d84a737f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "tokens": {
-      "name": "tokens",
+    "app_tokens": {
+      "name": "app_tokens",
       "columns": {
         "id": {
           "name": "id",
@@ -21,36 +21,51 @@
           "notNull": true,
           "autoincrement": false
         },
-        "token": {
-          "name": "token",
+        "access_token": {
+          "name": "access_token",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "refresh_token": {
-          "name": "refresh_token",
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at_str": {
+          "name": "created_at_str",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "createdAt": {
-          "name": "createdAt",
+        "expires_at": {
+          "name": "expires_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "expires_in": {
-          "name": "expires_in",
-          "type": "integer",
+        "expires_at_str": {
+          "name": "expires_at_str",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "app_tokens_server_unique": {
+          "name": "app_tokens_server_unique",
+          "columns": [
+            "server"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

@@ -5,6 +5,6 @@ export default defineConfig({
   schema: './src/db/schema.ts',
   dialect: 'sqlite',
   dbCredentials: {
-    url: 'file:db.sqlite',
+    url: Deno.env.get('DB_FILE') || 'file:db.sqlite',
   },
 })

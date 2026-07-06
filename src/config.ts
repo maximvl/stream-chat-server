@@ -10,21 +10,23 @@ export const LogLevel = {
   ALL: 3 as LogLevel,
 } as const
 
-const env = await load({
-  // optional: choose a specific path (defaults to ".env")
+// `.env.local` is only present in local dev; in Docker/prod the values are
+// passed directly as real process env vars, so we always fall back to those.
+await load({
   envPath: '.env.local',
-  // optional: also export to the process environment (so Deno.env can read it)
   export: true,
 })
 
-export const TWITCH_OAUTH_TOKEN = env.TWITCH_OAUTH_TOKEN || ''
-export const TWITCH_REFRESH_TOKEN = env.TWITCH_REFRESH_TOKEN || ''
-export const TWITCH_USERNAME = env.TWITCH_USERNAME || ''
-export const TWITCH_CLIENT_ID = env.TWITCH_CLIENT_ID || ''
+function getEnv(key: string): string | undefined {
+  return Deno.env.get(key)
+}
 
-export const LOG_LEVEL = Number(env.LOG_LEVEL) || LogLevel.ALL
+export const TWITCH_CLIENT_ID = getEnv('TWITCH_CLIENT_ID') || ''
+export const TWITCH_CLIENT_SECRET = getEnv('TWITCH_CLIENT_SECRET') || ''
 
-export const DB_FILE = 'file:db.sqlite'
+export const LOG_LEVEL = Number(getEnv('LOG_LEVEL')) || LogLevel.ALL
 
-export const WEBSERVER_PORT = Number(env.PORT) || 8000
-export const WEBSERVER_HOST = env.IP || '0.0.0.0'
+export const DB_FILE = getEnv('DB_FILE') || 'file:db.sqlite'
+
+export const WEBSERVER_PORT = Number(getEnv('PORT')) || 8000
+export const WEBSERVER_HOST = getEnv('IP') || '0.0.0.0'

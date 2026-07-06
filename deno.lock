@@ -1,9 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/dotenv@0.225.7": "0.225.7",
-    "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@libsql/client@~0.17.4": "0.17.4",
     "npm:arktype@^2.2.2": "2.2.2",
     "npm:drizzle-kit@*": "0.31.10",
@@ -11,17 +9,8 @@
     "npm:drizzle-orm@~0.45.2": "0.45.2_@libsql+client@0.17.4"
   },
   "jsr": {
-    "@std/assert@1.0.19": {
-      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
-      "dependencies": [
-        "jsr:@std/internal"
-      ]
-    },
     "@std/dotenv@0.225.7": {
       "integrity": "11d8db03ca4ad5aba9eba809f2e8058b2a4f320b7b09fea4b360e162928329e3"
-    },
-    "@std/internal@1.0.14": {
-      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
     }
   },
   "npm": {

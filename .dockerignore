@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# Deno
+.deno/
+coverage/
+*.lcov
+
+# Env / local data
+.env.local
+db.sqlite
+
+# Editor
+.vscode/
+.cursor/
+.idea/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Misc
+README.md
+graphify-out/
