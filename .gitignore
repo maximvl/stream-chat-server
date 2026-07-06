@@ -12,3 +12,6 @@ coverage/
 
 .env.local
 db.sqlite
+
+# Cursor
+.cursor/
