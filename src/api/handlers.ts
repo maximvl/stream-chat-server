@@ -32,12 +32,10 @@ const routes: Record<
 }
 
 async function chat_connect(req: Request): Promise<Response> {
+  const bodyText = await req.text()
   let bodyJson
   try {
-    bodyJson = await req.json()
-    if (!bodyJson) {
-      throw new Error('Invalid JSON')
-    }
+    bodyJson = JSON.parse(bodyText || '{}')
   } catch {
     return Promise.resolve(
       new Response(JSON.stringify({ errors: ['Invalid JSON'] }), {
