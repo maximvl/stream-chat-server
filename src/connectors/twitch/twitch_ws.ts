@@ -256,7 +256,7 @@ export class TwitchConnector implements ChatConnector {
       this.usersById.set(username, {
         id: username,
         displayName: username,
-        twitch_fields: {
+        twitchFields: {
           badges,
           attrs,
         },

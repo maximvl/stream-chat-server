@@ -41,7 +41,7 @@ export type UserTwitchFields = {
 export type ChatUser = {
   id: UserId
   displayName: string
-  twitch_fields?: UserTwitchFields
+  twitchFields?: UserTwitchFields
 }
 
 export interface TokenManager {
