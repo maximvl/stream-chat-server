@@ -12,6 +12,7 @@ import {
   ConnectorStatus,
   MessageId,
   TwitchBadge,
+  TwitchUserFields,
   UserId,
 } from '../types.ts'
 import {
@@ -285,24 +286,27 @@ export class TwitchConnector implements ChatConnector {
 
     const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
 
+    const twitchFields: TwitchUserFields = {
+      color: attrs['color'] ?? '',
+      mod: attrs['mod'] === '1',
+      subscriber: attrs['subscriber'] === '1',
+      turbo: attrs['turbo'] === '1',
+      highlighted: attrs['msg-id'] === 'highlighted-message',
+      badges,
+    }
+
     if (!this.usersById.has(username)) {
       this.usersById.set(username, {
         id: username,
         displayName: username,
-        twitchFields: {
-          badges,
-          attrs,
-        },
+        twitchFields,
       })
     }
 
     const messageUser: ChatUser = {
       id: username,
       displayName: attrs['display-name'] ?? username,
-      twitchFields: {
-        badges,
-        attrs,
-      },
+      twitchFields,
     }
 
     const timestampMs = attrs['tmi-sent-ts']
@@ -332,18 +336,21 @@ export class TwitchConnector implements ChatConnector {
       'subscriber',
       'vip',
       'mod',
+      'turbo',
+      'msg-id',
     ])
     const filered = parts.filter((p) => keys.has(p.split('=')[0]))
 
-    const result: Record<string, string> = {}
+    const attrs: Record<string, string> = {}
     for (const badge of filered) {
       const split = badge.split('=')
       if (split.length !== 2) {
         continue
       }
-      result[split[0]] = split[1]
+      attrs[split[0]] = split[1]
     }
-    return result
+
+    return attrs
   }
 
   parseBadges(channel: ChannelName, badgeValue: string): TwitchBadge[] {

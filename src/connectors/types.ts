@@ -62,7 +62,11 @@ export type TwitchBadge = {
 
 export type TwitchUserFields = {
   badges: TwitchBadge[]
-  attrs: Record<string, string>
+  color: string
+  mod: boolean
+  subscriber: boolean
+  turbo: boolean
+  highlighted: boolean
 }
 
 export type KickBadge = {
