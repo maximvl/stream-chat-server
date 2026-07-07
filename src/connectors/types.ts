@@ -27,11 +27,11 @@ export type ConnectorStatus = {
 }
 
 export interface ChatConnector {
-  connect(channel: ChannelName): Promise<void>
-  disconnect(channel: ChannelName): void
+  connect(channel: string): Promise<void>
+  disconnect(channel: string): void
   cleanup(): void
-  getChannelStatus(channel: ChannelName): ChannelStatus | null
-  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[]
+  getChannelStatus(channel: string): ChannelStatus | null
+  getMessages(channel: string, tsFrom: number): ChatMessage[]
   getStatus(): ConnectorStatus
   refreshToken?(): Promise<void>
   sendPing?(): Promise<void>

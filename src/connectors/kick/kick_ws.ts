@@ -20,6 +20,7 @@ import {
 } from './schema.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
+import { normalizeChannel } from '../utils.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -206,7 +207,9 @@ export class KickConnector implements ChatConnector {
     return Promise.resolve()
   }
 
-  async connect(channel: ChannelName): Promise<void> {
+  async connect(channelOrig: string): Promise<void> {
+    const channel = normalizeChannel(channelOrig)
+
     if (!this.websocket) {
       await this.initWebsocket()
     }
@@ -274,7 +277,8 @@ export class KickConnector implements ChatConnector {
     return `chatrooms.${id}.v2` as InternalChannelId
   }
 
-  disconnect(channel: ChannelName): void {
+  disconnect(channelOrig: string): void {
+    const channel = normalizeChannel(channelOrig)
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
 
@@ -314,7 +318,8 @@ export class KickConnector implements ChatConnector {
     }
   }
 
-  getChannelStatus(channel: ChannelName): ChannelStatus | null {
+  getChannelStatus(channelOrig: string): ChannelStatus | null {
+    const channel = normalizeChannel(channelOrig)
     const status = this.channelStatus.get(channel)
     if (status) {
       status.messagesCount = this.messages.get(channel)?.count() || 0
@@ -324,7 +329,8 @@ export class KickConnector implements ChatConnector {
     return status || null
   }
 
-  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
+  getMessages(channelOrig: string, tsFrom: number): ChatMessage[] {
+    const channel = normalizeChannel(channelOrig)
     const storage = this.messages.get(channel)
     if (!storage) {
       return []

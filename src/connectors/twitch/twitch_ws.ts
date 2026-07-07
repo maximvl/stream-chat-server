@@ -21,6 +21,7 @@ import {
   UserResponseSchema,
 } from './schemas.ts'
 import { type } from 'arktype'
+import { normalizeChannel } from '../utils.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -67,7 +68,8 @@ export class TwitchConnector implements ChatConnector {
     myLog(level, `[${this.server}]`, ...msgs)
   }
 
-  async connect(channel: ChannelName): Promise<void> {
+  async connect(channelOrig: string): Promise<void> {
+    const channel = normalizeChannel(channelOrig)
     if (!this.websocket) {
       await this.initWebsocket()
     }
@@ -120,7 +122,8 @@ export class TwitchConnector implements ChatConnector {
     this.websocketSend(`JOIN ${channelId}`)
   }
 
-  disconnect(channel: ChannelName): void {
+  disconnect(channelOrig: string): void {
+    const channel = normalizeChannel(channelOrig)
     this.log(LogLevel.DEBUG, `Disconnecting from channel: ${channel}`)
     const channelId = this.channelsMap.get(channel)
     if (channelId) {
@@ -227,7 +230,9 @@ export class TwitchConnector implements ChatConnector {
     const parts = msg.split(' ')
 
     if (parts.length === 3 && parts[1] === 'JOIN') {
-      const channel = this.reverseChannelsMap.get(parts[2] as InternalChannelId)
+      const channel = this.reverseChannelsMap.get(
+        parts[2].toLowerCase() as InternalChannelId,
+      )
       if (channel) {
         this.log(LogLevel.DEBUG, `Connected to channel: ${channel}`)
         this.channelStatus.set(channel, {
@@ -489,7 +494,8 @@ export class TwitchConnector implements ChatConnector {
     await this.tokenManager.maybeRefreshToken()
   }
 
-  getChannelStatus(channel: ChannelName): ChannelStatus | null {
+  getChannelStatus(channelOrig: string): ChannelStatus | null {
+    const channel = normalizeChannel(channelOrig)
     const status = this.channelStatus.get(channel)
     if (status) {
       status.messagesCount = this.messages.get(channel)?.count() || 0
@@ -499,7 +505,8 @@ export class TwitchConnector implements ChatConnector {
     return status || null
   }
 
-  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
+  getMessages(channelOrig: string, tsFrom: number): ChatMessage[] {
+    const channel = normalizeChannel(channelOrig)
     const storage = this.messages.get(channel)
     if (!storage) {
       return []

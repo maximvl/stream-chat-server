@@ -21,6 +21,7 @@ import { type } from 'arktype'
 import { LogLevel } from '../../config.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
+import { normalizeChannel } from '../utils.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -243,7 +244,8 @@ export class VkVideoConnector implements ChatConnector {
     storage.addMessage(msg)
   }
 
-  async connect(channel: ChannelName) {
+  async connect(channelOrig: string) {
+    const channel = normalizeChannel(channelOrig)
     if (!this.websocket) {
       await this.initWebsocket()
     }
@@ -297,7 +299,8 @@ export class VkVideoConnector implements ChatConnector {
     )
   }
 
-  disconnect(channel: ChannelName) {
+  disconnect(channelOrig: string) {
+    const channel = normalizeChannel(channelOrig)
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
 
@@ -338,7 +341,8 @@ export class VkVideoConnector implements ChatConnector {
     }
   }
 
-  getChannelStatus(channel: ChannelName): ChannelStatus | null {
+  getChannelStatus(channelOrig: string): ChannelStatus | null {
+    const channel = normalizeChannel(channelOrig)
     const status = this.channelStatus.get(channel)
     if (status) {
       status.messagesCount = this.messages.get(channel)?.count() || 0
@@ -348,7 +352,8 @@ export class VkVideoConnector implements ChatConnector {
     return status || null
   }
 
-  getMessages(channel: ChannelName, tsFrom: number): ChatMessage[] {
+  getMessages(channelOrig: string, tsFrom: number): ChatMessage[] {
+    const channel = normalizeChannel(channelOrig)
     const storage = this.messages.get(channel)
     if (!storage) {
       return []
