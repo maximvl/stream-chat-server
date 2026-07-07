@@ -38,3 +38,6 @@ export const MAX_MESSAGES_PER_CHANNEL =
   Number(getEnv('MAX_MESSAGE_PER_CHANNEL')) || 3000
 export const MAX_MESSAGES_RESPONSE = Number(getEnv('MAX_MESSAGES_RESPONSE')) ||
   300
+
+export const CORS_HOSTS = getEnv('CORS_HOSTS')?.split(',') ||
+  ['http://localhost:5173', 'https://mapcar.alwaysdata.net']

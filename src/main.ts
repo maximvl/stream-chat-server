@@ -1,5 +1,5 @@
 import { sleep } from './utils.ts'
-import { main_handler } from './api/handlers.ts'
+import { main_handler, withCors } from './api/handlers.ts'
 import { AppState } from './app.ts'
 import {
   DISABLED_CONNECTORS,
@@ -56,5 +56,8 @@ if (import.meta.main) {
   cleanupLoop()
   tokenRefreshLoop()
   pingLoop()
-  Deno.serve({ port: WEBSERVER_PORT, hostname: WEBSERVER_HOST }, main_handler)
+  Deno.serve(
+    { port: WEBSERVER_PORT, hostname: WEBSERVER_HOST },
+    withCors(main_handler),
+  )
 }

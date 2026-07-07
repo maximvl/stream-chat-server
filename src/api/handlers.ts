@@ -1,8 +1,45 @@
 import { AppState } from '../app.ts'
-import { MAX_MESSAGES_RESPONSE } from '../config.ts'
+import { CORS_HOSTS, MAX_MESSAGES_RESPONSE } from '../config.ts'
 import { ChannelName } from '../connectors/types.ts'
 import { ChatMessagesRequest, ConnectRequest } from './schema.ts'
 import { type } from 'arktype'
+
+export function withCors(
+  handler: (req: Request) => Promise<Response>,
+): (req: Request) => Promise<Response> {
+  return async (req) => {
+    const origin = req.headers.get('origin') ?? ''
+    const allowedHost = CORS_HOSTS.includes(origin)
+
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    }
+
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: allowedHost ? corsHeaders : {},
+      })
+    }
+
+    const response = await handler(req)
+
+    const headers = new Headers(response.headers)
+    if (allowedHost) {
+      Object.entries(corsHeaders).forEach(([key, value]) => {
+        headers.set(key, value)
+      })
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
+}
 
 export function main_handler(req: Request): Promise<Response> {
   const url = new URL(req.url)
