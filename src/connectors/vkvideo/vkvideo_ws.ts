@@ -12,6 +12,7 @@ import * as cheerio from 'cheerio'
 import {
   AppConfig,
   ChannelInfoResponse,
+  VkColorsMap,
   WsChatMessage,
   WsErrorMessage,
   WsSubscribeMessage,
@@ -210,6 +211,14 @@ export class VkVideoConnector implements ChatConnector {
     const msgUser: ChatUser = {
       id: data.author.id.toString() as UserId,
       displayName: data.author.displayName,
+      vkFields: {
+        nickColor: data.author.nickColor,
+        isChatModerator: data.author.isChatModerator,
+        isChannelModerator: data.author.isChannelModerator,
+        roles: data.author.roles,
+        badges: data.author.badges,
+        color: VkColorsMap[data.author.nickColor],
+      },
     }
 
     const msg: ChatMessage = {

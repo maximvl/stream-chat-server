@@ -11,6 +11,7 @@ import {
   ChatUser,
   ConnectorStatus,
   MessageId,
+  TwitchBadge,
   UserId,
 } from '../types.ts'
 import {
@@ -269,11 +270,18 @@ export class TwitchConnector implements ChatConnector {
       return null
     }
 
+    const channelId = rawMsg.channelPart as InternalChannelId
+    const channel = this.reverseChannelsMap.get(channelId)
+    if (!channel) {
+      this.log(LogLevel.DEBUG, `Unknown channel: ${channelId}`)
+      return null
+    }
+
     const attrs = this.parseAttrs(rawMsg.attrsPart)
 
     const badgeStr = attrs['badges'] ?? ''
     delete attrs['badges']
-    const badges = this.parseBadges(badgeStr)
+    const badges = this.parseBadges(channel, badgeStr)
 
     const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
 
@@ -286,13 +294,6 @@ export class TwitchConnector implements ChatConnector {
           attrs,
         },
       })
-    }
-
-    const channelId = rawMsg.channelPart as InternalChannelId
-    const channel = this.reverseChannelsMap.get(channelId)
-    if (!channel) {
-      this.log(LogLevel.DEBUG, `Unknown channel: ${channelId}`)
-      return null
     }
 
     const messageUser: ChatUser = {
@@ -345,15 +346,26 @@ export class TwitchConnector implements ChatConnector {
     return result
   }
 
-  parseBadges(badgeValue: string): Record<string, string> {
+  parseBadges(channel: ChannelName, badgeValue: string): TwitchBadge[] {
     const parts = badgeValue.split(',')
-    const result: Record<string, string> = {}
+    const result: TwitchBadge[] = []
     for (const badge of parts) {
       const split = badge.split('/')
       if (split.length !== 2) {
         continue
       }
-      result[split[0]] = split[1]
+      const badgeObj = this.getBadge({
+        channel,
+        setId: split[0],
+        versionId: split[1],
+      })
+      if (badgeObj) {
+        result.push({
+          id: badgeObj.id,
+          title: badgeObj.title,
+          imageUrl: badgeObj.image_url_4x,
+        })
+      }
     }
     return result
   }

@@ -1,4 +1,5 @@
 import { type ChatServer } from '../api/schema.ts'
+import { ChatBadge, ChatRole } from './vkvideo/schemas.ts'
 export type { ChatServer }
 
 export type ChannelName = string & { readonly __brand: unique symbol }
@@ -53,8 +54,14 @@ export type ChatMessage = {
   vkFields?: VkMessageFields
 }
 
+export type TwitchBadge = {
+  id: string
+  title: string
+  imageUrl: string
+}
+
 export type TwitchUserFields = {
-  badges: Record<string, string>
+  badges: TwitchBadge[]
   attrs: Record<string, string>
 }
 
@@ -70,11 +77,21 @@ export type KickUserFields = {
   badges: KickBadge[]
 }
 
+export type VkUserFields = {
+  nickColor: number
+  color?: string
+  isChatModerator: boolean
+  isChannelModerator: boolean
+  roles: ChatRole[]
+  badges: ChatBadge[]
+}
+
 export type ChatUser = {
   id: UserId
   displayName: string
   twitchFields?: TwitchUserFields
   kickFields?: KickUserFields
+  vkFields?: VkUserFields
 }
 
 export interface TokenManager {

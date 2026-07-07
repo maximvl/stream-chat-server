@@ -31,14 +31,16 @@ export const WsSubscribeMessage = type({
   id: 'number',
 })
 
-const ChatRole = type({
+export const ChatRole = type({
   id: 'string',
   name: 'string',
   largeUrl: 'string',
   priority: 'number',
 })
 
-const ChatBadge = type({
+export type ChatRole = typeof ChatRole.infer
+
+export const ChatBadge = type({
   id: 'string',
   name: 'string',
   largeUrl: 'string',
@@ -47,6 +49,8 @@ const ChatBadge = type({
     type: 'string',
   }),
 })
+
+export type ChatBadge = typeof ChatBadge.infer
 
 const MsgAuthor = type({
   id: 'number',
@@ -90,3 +94,22 @@ export const WsChatMessage = type({
     }),
   }),
 })
+
+export const VkColorsMap: Record<number, string> = {
+  0: '#D66E34',
+  1: '#B8AAFF',
+  2: '#1D90FF',
+  3: '#9961F9',
+  4: '#59A840',
+  5: '#E73629',
+  6: '#DE6489',
+  7: '#20BBA1',
+  8: '#F8B301',
+  9: '#0099BB',
+  10: '#7BBEFF',
+  11: '#E542FF',
+  12: '#A36C59',
+  13: '#8BA259',
+  14: '#00A9FF',
+  15: '#A20BFF',
+}
