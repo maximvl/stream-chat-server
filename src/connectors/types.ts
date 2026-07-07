@@ -71,7 +71,7 @@ export type TwitchUserFields = {
 
 export type KickBadge = {
   name: string
-  badgeType: string
+  type: string
   imageUrl?: string
   selected: boolean
 }

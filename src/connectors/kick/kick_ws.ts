@@ -154,7 +154,7 @@ export class KickConnector implements ChatConnector {
     for (const badge of chatMsgData.sender.identity.badges_v2) {
       badges.push({
         name: badge.name,
-        badgeType: badge.badge_type,
+        type: badge.badge_type,
         imageUrl: badge.image_url,
         selected: badge.selected,
       })
@@ -163,7 +163,7 @@ export class KickConnector implements ChatConnector {
     for (const badge of chatMsgData.sender.identity.badges) {
       badges.push({
         name: badge.text,
-        badgeType: badge.type,
+        type: badge.type,
         imageUrl: undefined,
         selected: false,
       })
