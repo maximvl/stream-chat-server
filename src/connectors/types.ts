@@ -35,6 +35,7 @@ export interface ChatConnector {
   getStatus(): ConnectorStatus
   refreshToken?(): Promise<void>
   sendPing?(): Promise<void>
+  pollMessages?(): Promise<void>
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }

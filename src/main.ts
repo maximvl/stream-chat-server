@@ -42,6 +42,17 @@ async function pingLoop() {
   }
 }
 
+async function pollLoop() {
+  while (true) {
+    for (const [_server, connector] of AppState.connectors.entries()) {
+      if (connector) {
+        await connector.pollMessages?.()
+      }
+    }
+    await sleep(1000 * 3) // 3 seconds
+  }
+}
+
 if (import.meta.main) {
   if (!DISABLED_CONNECTORS.includes('twitch')) {
     AppState.connectors.set('twitch', new TwitchConnector())
@@ -56,6 +67,8 @@ if (import.meta.main) {
   cleanupLoop()
   tokenRefreshLoop()
   pingLoop()
+  pollLoop()
+
   Deno.serve(
     { port: WEBSERVER_PORT, hostname: WEBSERVER_HOST },
     withCors(main_handler),
