@@ -34,6 +34,13 @@ type RawMsg = {
 
 type BoardcasterId = string & { readonly __brand: unique symbol }
 
+class BroadcasterFetchError extends Error {
+  constructor(channel: string) {
+    super(`Channel ${channel} not found or banned`)
+    this.name = 'BroadcasterFetchError'
+  }
+}
+
 export class TwitchConnector implements ChatConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
@@ -111,6 +118,10 @@ export class TwitchConnector implements ChatConnector {
         LogLevel.DEBUG,
         `Failed to fetch badges for channel ${channel}: ${error}`,
       )
+      // If the channel doesn't exist or is banned, disconnect it
+      if (error instanceof BroadcasterFetchError) {
+        this.disconnect(channel)
+      }
     }
 
     const channelLower = channel.toLowerCase() as ChannelName
@@ -245,6 +256,30 @@ export class TwitchConnector implements ChatConnector {
           uptimeMs: 0,
           messagesCount: 0,
         })
+      }
+      return null
+    }
+
+    // Handle NOTICE messages for errors (e.g., banned/suspended channels)
+    if (parts.length >= 4 && parts[1] === 'NOTICE') {
+      const channelId = parts[3].toLowerCase() as InternalChannelId
+      const channel = this.reverseChannelsMap.get(channelId)
+      if (channel) {
+        const message = parts.slice(4).join(' ').slice(1)
+        this.log(LogLevel.DEBUG, `NOTICE for ${channel}: ${message}`)
+
+        // Check for ban/suspend errors
+        if (
+          message.includes('suspended') ||
+          message.includes('banned') ||
+          message.includes('does not exist')
+        ) {
+          this.log(
+            LogLevel.DEBUG,
+            `Channel ${channel} is banned/suspended, disconnecting`,
+          )
+          this.disconnect(channel)
+        }
       }
       return null
     }
@@ -403,7 +438,11 @@ export class TwitchConnector implements ChatConnector {
       },
     )
     const data = await response.json()
-    const id = UserResponseSchema.assert(data).data[0].id as BoardcasterId
+    const parsed = UserResponseSchema.assert(data)
+    if (!parsed.data[0]) {
+      throw new BroadcasterFetchError(channel)
+    }
+    const id = parsed.data[0].id as BoardcasterId
     this.broadcasterByChannel.set(channel, id)
     return id
   }
