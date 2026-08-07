@@ -42,7 +42,10 @@ export type MessageId = string & { readonly __brand: unique symbol }
 export type UserId = string & { readonly __brand: unique symbol }
 
 export type VkMessageFields = {
-  mentions: string[]
+  mentions: {
+    id: number
+    displayName: string
+  }[]
 }
 
 export type ChatMessage = {

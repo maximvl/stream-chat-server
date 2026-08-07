@@ -7,6 +7,7 @@ import {
   ConnectorStatus,
   MessageId,
   UserId,
+  VkMessageFields,
 } from '../types.ts'
 import * as cheerio from 'cheerio'
 import {
@@ -183,7 +184,7 @@ export class VkVideoConnector implements ChatConnector {
       return
     }
 
-    const mentions: string[] = []
+    const mentions: VkMessageFields['mentions'] = []
     const messageParts: string[] = []
 
     for (const content of data.data) {
@@ -192,7 +193,10 @@ export class VkVideoConnector implements ChatConnector {
       }
       switch (content.type) {
         case 'mention':
-          mentions.push(content.displayName)
+          mentions.push({
+            id: content.id,
+            displayName: content.displayName,
+          })
           break
         case 'text':
           try {
