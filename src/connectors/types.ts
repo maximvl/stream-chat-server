@@ -85,6 +85,11 @@ export type KickUserFields = {
   badges: KickBadge[]
 }
 
+export type WtvUserFields = {
+  nicknameColor: string
+  tags: string[]
+}
+
 export type VkUserFields = {
   nickColor: number
   color?: string
@@ -100,6 +105,7 @@ export type ChatUser = {
   twitchFields?: TwitchUserFields
   kickFields?: KickUserFields
   vkFields?: VkUserFields
+  wtvFields?: WtvUserFields
 }
 
 export interface TokenManager {

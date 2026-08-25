@@ -9,6 +9,7 @@ import {
 import { TwitchConnector } from './connectors/twitch/twitch_ws.ts'
 import { VkVideoConnector } from './connectors/vkvideo/vkvideo_ws.ts'
 import { KickConnector } from './connectors/kick/kick_ws.ts'
+import { WtvConnector } from './connectors/wtv/wtv_ws.ts'
 
 async function cleanupLoop() {
   while (true) {
@@ -62,6 +63,9 @@ if (import.meta.main) {
   }
   if (!DISABLED_CONNECTORS.includes('kick')) {
     AppState.connectors.set('kick', new KickConnector())
+  }
+  if (!DISABLED_CONNECTORS.includes('wtv')) {
+    AppState.connectors.set('wtv', new WtvConnector())
   }
 
   cleanupLoop()
