@@ -104,6 +104,13 @@ export class VkVideoConnector implements ChatConnector {
     this.websocket?.close()
     this.websocket = null
     this.startedAtMs = 0
+    for (const [channel, status] of this.channelStatus.entries()) {
+      this.channelStatus.set(channel, {
+        ...status,
+        status: 'disconnected',
+        uptimeMs: 0,
+      })
+    }
   }
 
   handleMessage(event: MessageEvent) {
@@ -350,8 +357,9 @@ export class VkVideoConnector implements ChatConnector {
     const status = this.channelStatus.get(channel)
     if (status) {
       status.messagesCount = this.messages.get(channel)?.count() || 0
-      status.uptimeMs = Temporal.Now.instant().epochMilliseconds -
-        status.joinedAtMs
+      status.uptimeMs = status.status === 'connected'
+        ? Temporal.Now.instant().epochMilliseconds - status.joinedAtMs
+        : 0
     }
     return status || null
   }
