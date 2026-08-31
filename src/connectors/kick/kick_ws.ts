@@ -91,13 +91,15 @@ export class KickConnector implements ChatConnector {
       )
       return
     }
-    this.log(LogLevel.ALL, `Received: ${event.data}`)
 
     let jsonData: unknown
     try {
       jsonData = JSON.parse(event.data)
     } catch (error) {
-      this.log(LogLevel.DEBUG, `Failed to parse msg as json: ${error}`)
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to parse msg as json: ${error} raw: ${event.data}`,
+      )
       return
     }
 
@@ -129,6 +131,8 @@ export class KickConnector implements ChatConnector {
 
     const chatMsg = WsChatMsg(jsonData)
     if (chatMsg instanceof type.errors) {
+      // No matching known message type; only log if we can identify it as chat-related
+      // to avoid spamming for expected Pusher control messages already handled above
       return
     }
 
@@ -137,7 +141,7 @@ export class KickConnector implements ChatConnector {
     } catch (error) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to parse chat msg data as json: ${error}`,
+        `Failed to parse chat msg data as json: ${error} raw: ${chatMsg.data}`,
       )
       return
     }
@@ -146,7 +150,7 @@ export class KickConnector implements ChatConnector {
     if (chatMsgData instanceof type.errors) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to parse chat msg data: ${chatMsgData.summary}`,
+        `Failed to parse chat msg data: ${chatMsgData.summary} raw: ${chatMsg.data}`,
       )
       return
     }
@@ -195,7 +199,9 @@ export class KickConnector implements ChatConnector {
       channel,
     }
 
-    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    if (msg.text.trim()) {
+      this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    }
 
     let storage = this.messages.get(channel)
     if (!storage) {

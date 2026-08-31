@@ -91,13 +91,15 @@ export class WtvChatConnection {
       )
       return
     }
-    this.log(LogLevel.ALL, `Received: ${event.data}`)
 
     let jsonData: unknown
     try {
       jsonData = JSON.parse(event.data)
     } catch (error) {
-      this.log(LogLevel.DEBUG, `Failed to parse msg as json: ${error}`)
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to parse msg as json: ${error} raw: ${event.data}`,
+      )
       return
     }
 
@@ -105,7 +107,7 @@ export class WtvChatConnection {
     if (envelope instanceof type.errors) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to parse event envelope: ${envelope.summary}`,
+        `Failed to parse event envelope: ${envelope.summary} raw: ${event.data}`,
       )
       return
     }
@@ -131,7 +133,7 @@ export class WtvChatConnection {
     } catch (error) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to parse message data as json: ${error}`,
+        `Failed to parse message data as json: ${error} raw: ${envelope.Attributes.data}`,
       )
       return
     }
@@ -140,7 +142,7 @@ export class WtvChatConnection {
     if (chatMsgData instanceof type.errors) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to parse chat msg data: ${chatMsgData.summary}`,
+        `Failed to parse chat msg data: ${chatMsgData.summary} raw: ${envelope.Attributes.data}`,
       )
       return
     }
@@ -163,7 +165,9 @@ export class WtvChatConnection {
       channel: this.channel,
     }
 
-    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    if (msg.text.trim()) {
+      this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    }
 
     this.onMessage(msg)
   }

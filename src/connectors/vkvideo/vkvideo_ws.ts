@@ -124,7 +124,6 @@ export class VkVideoConnector implements ChatConnector {
       )
       return
     }
-    this.log(LogLevel.ALL, `Received: ${event.data}`)
 
     if (event.data === '{}') {
       this.websocket?.send('{}')
@@ -136,13 +135,21 @@ export class VkVideoConnector implements ChatConnector {
     try {
       jsonData = JSON.parse(event.data)
     } catch (error) {
-      this.log(LogLevel.DEBUG, `Failed to parse msg as json: ${error}`)
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to parse msg as json: ${error} raw: ${event.data}`,
+      )
       return
     }
 
     const errorMsg = WsErrorMessage(jsonData)
     if (!(errorMsg instanceof type.errors)) {
-      this.log(LogLevel.DEBUG, `Received error message: ${errorMsg}`)
+      this.log(
+        LogLevel.DEBUG,
+        `Received error message: ${
+          JSON.stringify(errorMsg)
+        } raw: ${event.data}`,
+      )
       return
     }
 
@@ -169,8 +176,10 @@ export class VkVideoConnector implements ChatConnector {
     const chatMsg = WsChatMessage(jsonData)
     if (chatMsg instanceof type.errors) {
       this.log(
-        LogLevel.ALL,
-        `Failed to parse chat message: ${JSON.stringify(chatMsg.issues)}`,
+        LogLevel.DEBUG,
+        `Failed to parse chat message: ${
+          JSON.stringify(chatMsg.issues)
+        } raw: ${event.data}`,
       )
       return
     }
@@ -245,7 +254,9 @@ export class VkVideoConnector implements ChatConnector {
       },
     }
 
-    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    if (msg.text.trim()) {
+      this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
+    }
 
     let storage = this.messages.get(channel)
     if (!storage) {

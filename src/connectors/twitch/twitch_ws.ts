@@ -224,22 +224,22 @@ export class TwitchConnector implements ChatConnector {
     const frames = event.data.split('\r\n')
     for (const frame of frames) {
       const trimmed = frame.trim()
-      this.log(LogLevel.ALL, `Received frame: [${trimmed}]`)
+      if (!trimmed) {
+        continue
+      }
 
       if (trimmed === 'PING :tmi.twitch.tv') {
         this.websocketSend('PONG :tmi.twitch.tv')
         continue
       }
-      if (trimmed) {
-        const msg = this.parseMessage(trimmed)
-        if (msg) {
-          let storage = this.messages.get(msg.channel)
-          if (!storage) {
-            storage = new MessageStorage()
-            this.messages.set(msg.channel, storage)
-          }
-          storage.addMessage(msg)
+      const msg = this.parseMessage(trimmed)
+      if (msg) {
+        let storage = this.messages.get(msg.channel)
+        if (!storage) {
+          storage = new MessageStorage()
+          this.messages.set(msg.channel, storage)
         }
+        storage.addMessage(msg)
       }
     }
   }
@@ -315,13 +315,17 @@ export class TwitchConnector implements ChatConnector {
     }
 
     if (!rawMsg.userPart || !rawMsg.channelPart || !rawMsg.message) {
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to parse PRIVMSG: missing parts raw: ${msg}`,
+      )
       return null
     }
 
     const channelId = rawMsg.channelPart as InternalChannelId
     const channel = this.reverseChannelsMap.get(channelId)
     if (!channel) {
-      this.log(LogLevel.DEBUG, `Unknown channel: ${channelId}`)
+      this.log(LogLevel.DEBUG, `Unknown channel: ${channelId} raw: ${msg}`)
       return null
     }
 
@@ -368,7 +372,9 @@ export class TwitchConnector implements ChatConnector {
       channel,
       text: rawMsg.message.slice(1),
     }
-    this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
+    if (message.text.trim()) {
+      this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
+    }
     return message
   }
 
