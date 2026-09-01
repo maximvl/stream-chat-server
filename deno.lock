@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/dotenv@0.225.7": "0.225.7",
     "npm:@libsql/client@~0.17.4": "0.17.4",
+    "npm:arktype@2.2.2": "2.2.2",
     "npm:arktype@^2.2.2": "2.2.2",
     "npm:cheerio@^1.2.0": "1.2.0",
     "npm:drizzle-kit@*": "0.31.10",

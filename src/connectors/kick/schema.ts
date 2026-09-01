@@ -17,15 +17,15 @@ export const WsChatBadgeV2 = type({
   image_url: 'string',
   selected: 'boolean',
   sort_order: 'number',
-  metadata: {
-    level: 'number',
+  'metadata?': {
+    'level?': 'number',
   },
 })
 
 export const WsChatBadge = type({
   type: 'string',
   text: 'string',
-  count: 'number',
+  'count?': 'number',
   sort_order: 'number',
 })
 
