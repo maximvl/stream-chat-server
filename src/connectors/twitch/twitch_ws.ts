@@ -1,4 +1,8 @@
-import { LogLevel, TWITCH_CLIENT_ID } from '../../config.ts'
+import {
+  CHANNEL_INACTIVITY_TIMEOUT_MINUTES,
+  LogLevel,
+  TWITCH_CLIENT_ID,
+} from '../../config.ts'
 import { TwitchTokenManager } from './token_manager.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
@@ -526,7 +530,7 @@ export class TwitchConnector implements ChatConnector {
 
     const now = Temporal.Now.instant()
     const disconnectCutoff = now.subtract(
-      Temporal.Duration.from({ minutes: 30 }),
+      Temporal.Duration.from({ minutes: CHANNEL_INACTIVITY_TIMEOUT_MINUTES }),
     )
     this.log(LogLevel.VERBOSE, `Cleaning up channels`)
     for (const [channel, storage] of this.messages.entries()) {

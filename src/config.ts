@@ -39,5 +39,8 @@ export const MAX_MESSAGES_PER_CHANNEL =
 export const MAX_MESSAGES_RESPONSE = Number(getEnv('MAX_MESSAGES_RESPONSE')) ||
   300
 
+export const CHANNEL_INACTIVITY_TIMEOUT_MINUTES =
+  Number(getEnv('CHANNEL_INACTIVITY_TIMEOUT_MINUTES')) || 60
+
 export const CORS_HOSTS = getEnv('CORS_HOSTS')?.split(',') ||
   ['http://localhost:5173', 'https://mapcar.alwaysdata.net']

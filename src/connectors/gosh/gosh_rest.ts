@@ -1,5 +1,5 @@
 import { type } from 'arktype'
-import { LogLevel } from '../../config.ts'
+import { CHANNEL_INACTIVITY_TIMEOUT_MINUTES, LogLevel } from '../../config.ts'
 import { myLog } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import {
@@ -52,7 +52,7 @@ export class GoshConnector implements ChatConnector {
   cleanup(): void {
     const now = Temporal.Now.instant()
     const disconnectCutoff = now.subtract(
-      Temporal.Duration.from({ minutes: 30 }),
+      Temporal.Duration.from({ minutes: CHANNEL_INACTIVITY_TIMEOUT_MINUTES }),
     )
     this.log(LogLevel.VERBOSE, `Cleaning up channels`)
     for (const [channel, storage] of this.messages.entries()) {

@@ -1,4 +1,7 @@
-import { MAX_MESSAGES_PER_CHANNEL } from '../config.ts'
+import {
+  CHANNEL_INACTIVITY_TIMEOUT_MINUTES,
+  MAX_MESSAGES_PER_CHANNEL,
+} from '../config.ts'
 import { ChatMessage } from './types.ts'
 
 export class MessageStorage {
@@ -23,7 +26,9 @@ export class MessageStorage {
 
   clearOldMessages() {
     const now = Temporal.Now.instant()
-    const removeInteval = Temporal.Duration.from({ minutes: 30 })
+    const removeInteval = Temporal.Duration.from({
+      minutes: CHANNEL_INACTIVITY_TIMEOUT_MINUTES,
+    })
     const cutoff = now.subtract(removeInteval)
     if (Temporal.Instant.compare(this.lastReadAt, cutoff) < 0) {
       this.clear()
