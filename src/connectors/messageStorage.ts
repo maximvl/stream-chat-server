@@ -20,6 +20,11 @@ export class MessageStorage {
     return this.messages.filter((message) => message.timestampMs > timestamp)
   }
 
+  getLastMessages(limit: number) {
+    this.lastReadAt = Temporal.Now.instant()
+    return this.messages.slice(-limit)
+  }
+
   clear() {
     this.messages = []
   }

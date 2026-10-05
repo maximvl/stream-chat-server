@@ -384,6 +384,15 @@ export class VkVideoConnector implements ChatConnector {
     return storage.getMessagesAfter(tsFrom)
   }
 
+  getLastMessages(channelOrig: string, limit: number): ChatMessage[] {
+    const channel = normalizeChannel(channelOrig)
+    const storage = this.messages.get(channel)
+    if (!storage) {
+      return []
+    }
+    return storage.getLastMessages(limit)
+  }
+
   async fetchAppConfig(): Promise<void> {
     const response = await fetch('https://live.vkvideo.ru/')
     const data = await response.text()

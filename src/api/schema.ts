@@ -26,3 +26,8 @@ export const ChatMessagesRequest = type({
   channel: 'string',
   tsFrom: Timestamp,
 })
+
+export const ChatLastMessagesRequest = type({
+  server: ChatServer,
+  channel: 'string',
+})

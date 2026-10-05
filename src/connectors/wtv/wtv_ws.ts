@@ -284,6 +284,15 @@ export class WtvConnector implements ChatConnector {
     return storage.getMessagesAfter(tsFrom)
   }
 
+  getLastMessages(channelOrig: string, limit: number): ChatMessage[] {
+    const channel = normalizeChannel(channelOrig)
+    const storage = this.messages.get(channel)
+    if (!storage) {
+      return []
+    }
+    return storage.getLastMessages(limit)
+  }
+
   getStatus(): ConnectorStatus {
     const startedAtStr = this.startedAtMs > 0
       ? Temporal.Instant.fromEpochMilliseconds(this.startedAtMs).toString({

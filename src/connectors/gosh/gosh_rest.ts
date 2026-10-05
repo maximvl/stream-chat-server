@@ -87,6 +87,14 @@ export class GoshConnector implements ChatConnector {
     return storage.getMessagesAfter(tsFrom)
   }
 
+  getLastMessages(channel: ChannelName, limit: number): ChatMessage[] {
+    const storage = this.messages.get(channel)
+    if (!storage) {
+      return []
+    }
+    return storage.getLastMessages(limit)
+  }
+
   getStatus(): ConnectorStatus {
     return {
       server: 'gosh',

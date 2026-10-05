@@ -32,6 +32,7 @@ export interface ChatConnector {
   cleanup(): void
   getChannelStatus(channel: string): ChannelStatus | null
   getMessages(channel: string, tsFrom: number): ChatMessage[]
+  getLastMessages(channel: string, limit: number): ChatMessage[]
   getStatus(): ConnectorStatus
   refreshToken?(): Promise<void>
   sendPing?(): Promise<void>
