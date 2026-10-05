@@ -1,7 +1,8 @@
 import { AppState } from '../app.ts'
 import {
   CORS_HOSTS,
-  MAX_LAST_MESSAGES,
+  DEFAULT_LAST_MESSAGES_LIMIT,
+  MAX_LAST_MESSAGES_LIMIT,
   MAX_MESSAGES_RESPONSE,
 } from '../config.ts'
 import { ChannelName } from '../connectors/types.ts'
@@ -172,9 +173,11 @@ function chat_messages(req: Request): Promise<Response> {
 
 function chat_last_messages(req: Request): Promise<Response> {
   const url = new URL(req.url)
+  const limitParam = url.searchParams.get('limit')
   const params = ChatLastMessagesRequest({
     server: url.searchParams.get('server'),
     channel: url.searchParams.get('channel'),
+    ...(limitParam !== null ? { limit: limitParam } : {}),
   })
   if (params instanceof type.errors) {
     return Promise.resolve(
@@ -197,9 +200,14 @@ function chat_last_messages(req: Request): Promise<Response> {
 
   const status = connector.getChannelStatus(params.channel as ChannelName)
 
+  const limit = Math.min(
+    params.limit ?? DEFAULT_LAST_MESSAGES_LIMIT,
+    MAX_LAST_MESSAGES_LIMIT,
+  )
+
   const messages = connector.getLastMessages(
     params.channel as ChannelName,
-    MAX_LAST_MESSAGES,
+    limit,
   )
 
   return Promise.resolve(

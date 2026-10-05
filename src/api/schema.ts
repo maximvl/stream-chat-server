@@ -27,7 +27,16 @@ export const ChatMessagesRequest = type({
   tsFrom: Timestamp,
 })
 
+const LastMessagesLimit = type('string').pipe((value, ctx) => {
+  const limit = parseInt(value)
+  if (!isFinite(limit) || limit < 1) {
+    return ctx.error('must be a positive integer')
+  }
+  return limit
+}).to('number')
+
 export const ChatLastMessagesRequest = type({
   server: ChatServer,
   channel: 'string',
+  'limit?': LastMessagesLimit,
 })

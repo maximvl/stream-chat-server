@@ -39,7 +39,12 @@ export const MAX_MESSAGES_PER_CHANNEL =
 export const MAX_MESSAGES_RESPONSE = Number(getEnv('MAX_MESSAGES_RESPONSE')) ||
   300
 
-export const MAX_LAST_MESSAGES = Number(getEnv('MAX_LAST_MESSAGES')) || 50
+export const DEFAULT_LAST_MESSAGES_LIMIT =
+  Number(getEnv('DEFAULT_LAST_MESSAGES_LIMIT')) || 10
+
+export const MAX_LAST_MESSAGES_LIMIT = Number(
+  getEnv('MAX_LAST_MESSAGES_LIMIT') ?? getEnv('MAX_LAST_MESSAGES'),
+) || 300
 
 export const CHANNEL_INACTIVITY_TIMEOUT_MINUTES =
   Number(getEnv('CHANNEL_INACTIVITY_TIMEOUT_MINUTES')) || 60
