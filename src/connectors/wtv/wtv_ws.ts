@@ -16,7 +16,11 @@ import { WTV_USER_AGENT, WtvChatConnection } from './connection.ts'
 const WTV_PROFILES_BY_NICKNAME_URL =
   'https://profiles-service.w.tv/api/v1/profiles/by-nickname'
 
-const WTV_CHATS_JOIN_URL = 'https://chats-service.w.tv/api/v1/chats'
+const WTV_CHATS_URL = 'https://chats-service.w.tv/api/v1/chats'
+
+const MAX_RECONNECT_ATTEMPTS = 10
+const RECONNECT_BASE_MS = 1000
+const RECONNECT_MAX_MS = 30_000
 
 export class WtvConnector implements ChatConnector {
   startedAtMs: number = 0
@@ -29,6 +33,16 @@ export class WtvConnector implements ChatConnector {
 
   nicknameToUserId: Map<string, string> = new Map()
   userIdToNickname: Map<string, string> = new Map()
+
+  private stopped = new Set<ChannelName>()
+  private opening = new Set<ChannelName>()
+  private pendingOpen = new Set<ChannelName>()
+  private missingProfiles = new Set<string>()
+  private reconnectAttempts = new Map<ChannelName, number>()
+  private reconnectTimers = new Map<
+    ChannelName,
+    ReturnType<typeof setTimeout>
+  >()
 
   log(level: LogLevel, ...msgs: unknown[]) {
     myLog(level, '[wtv]', ...msgs)
@@ -69,70 +83,173 @@ export class WtvConnector implements ChatConnector {
     if (this.connections.get(channel)?.isClosed()) {
       this.connections.delete(channel)
     }
+    this.scheduleReconnect(channel)
+  }
+
+  private handleSilence(channel: ChannelName) {
+    if (this.stopped.has(channel)) return
+    const conn = this.connections.get(channel)
+    if (!conn) return
+    this.log(
+      LogLevel.DEBUG,
+      `Silence on ${channel}, closing socket to reconnect`,
+    )
+    conn.close()
+  }
+
+  private isHealthy(channel: ChannelName): boolean {
+    const conn = this.connections.get(channel)
+    if (!conn || conn.readyState !== WebSocket.OPEN) return false
+    return !conn.isSilent()
+  }
+
+  private clearReconnectTimer(channel: ChannelName) {
+    const timer = this.reconnectTimers.get(channel)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      this.reconnectTimers.delete(channel)
+    }
+  }
+
+  private scheduleReconnect(channel: ChannelName) {
+    if (this.stopped.has(channel)) return
+    if (!this.channelStatus.has(channel)) return
+    if (this.reconnectTimers.has(channel)) return
+
+    const attempt = (this.reconnectAttempts.get(channel) ?? 0) + 1
+    this.reconnectAttempts.set(channel, attempt)
+
+    const delay = attempt > MAX_RECONNECT_ATTEMPTS
+      ? RECONNECT_MAX_MS
+      : Math.min(RECONNECT_BASE_MS * 2 ** (attempt - 1), RECONNECT_MAX_MS)
+
+    if (attempt > MAX_RECONNECT_ATTEMPTS) {
+      this.reconnectAttempts.set(channel, 0)
+    }
+
+    this.log(
+      LogLevel.DEBUG,
+      `Reconnecting ${channel} in ${delay}ms (attempt ${attempt})`,
+    )
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(channel)
+      void this.openChannel(channel)
+    }, delay)
+    this.reconnectTimers.set(channel, timer)
   }
 
   sendPing(): Promise<void> {
-    for (const conn of this.connections.values()) {
-      conn.sendPing()
+    const now = Date.now()
+    for (const [channel, conn] of this.connections) {
+      if (!conn.isSilent(now)) continue
+      this.log(
+        LogLevel.DEBUG,
+        `Silence on ${channel}, closing socket to reconnect`,
+      )
+      conn.close()
     }
     return Promise.resolve()
   }
 
   async connect(channelOrig: string): Promise<void> {
     const channel = normalizeChannel(channelOrig)
+    this.stopped.delete(channel)
+    this.missingProfiles.delete(channel)
 
     const status = this.channelStatus.get(channel)
     if (status?.status === 'connecting' || status?.status === 'connected') {
       return
     }
 
+    this.clearReconnectTimer(channel)
+    await this.openChannel(channel)
+  }
+
+  private async openChannel(channel: ChannelName): Promise<void> {
+    if (this.stopped.has(channel)) return
+    if (this.opening.has(channel)) {
+      this.pendingOpen.add(channel)
+      return
+    }
+    this.opening.add(channel)
+    this.pendingOpen.delete(channel)
+
+    const now = Temporal.Now.instant()
+    const prev = this.channelStatus.get(channel)
     this.channelStatus.set(channel, {
       channel,
       status: 'connecting',
-      joinedAtMs: Temporal.Now.instant().epochMilliseconds,
-      joinedAtStr: Temporal.Now.instant().toString({
-        smallestUnit: 'seconds',
-      }),
+      joinedAtMs: prev?.joinedAtMs ?? now.epochMilliseconds,
+      joinedAtStr: prev?.joinedAtStr ??
+        now.toString({ smallestUnit: 'seconds' }),
       uptimeMs: 0,
       messagesCount: 0,
     })
 
-    const userId = await this.fetchUserIdByNickname(channel)
-    if (!userId) {
-      this.log(LogLevel.DEBUG, 'Failed to fetch user ID for channel')
-      this.channelStatus.delete(channel)
-      return
+    try {
+      const previous = this.connections.get(channel)
+      if (previous) {
+        this.connections.delete(channel)
+        previous.close(true)
+      }
+
+      const userId = await this.fetchUserIdByNickname(channel)
+      if (this.stopped.has(channel)) return
+      if (!userId) {
+        if (this.missingProfiles.has(channel)) {
+          this.log(LogLevel.DEBUG, `Profile not found for ${channel}`)
+          this.channelStatus.delete(channel)
+          return
+        }
+        this.log(LogLevel.DEBUG, 'Failed to fetch user ID for channel')
+        this.scheduleReconnect(channel)
+        return
+      }
+
+      const token = await this.fetchWsToken(userId)
+      if (this.stopped.has(channel)) return
+      if (!token) {
+        this.log(LogLevel.DEBUG, 'Failed to fetch ws token')
+        this.scheduleReconnect(channel)
+        return
+      }
+
+      if (!this.messages.has(channel)) {
+        this.messages.set(channel, new MessageStorage())
+      }
+
+      const conn = new WtvChatConnection(
+        channel,
+        (msg) => this.handleIncomingMessage(msg),
+        () => this.handleConnectionOpen(channel),
+        () => this.handleConnectionClose(channel),
+        () => this.handleSilence(channel),
+      )
+      this.connections.set(channel, conn)
+
+      if (!this.startedAtMs) {
+        this.startedAtMs = Temporal.Now.instant().epochMilliseconds
+      }
+
+      const ok = await conn.connect(token)
+      if (this.stopped.has(channel)) return
+      if (ok) {
+        this.reconnectAttempts.set(channel, 0)
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to open ${channel}: ${error}`)
+      if (!this.stopped.has(channel)) {
+        this.scheduleReconnect(channel)
+      }
+    } finally {
+      this.opening.delete(channel)
     }
 
-    const token = await this.fetchWsToken(userId)
-    if (!token) {
-      this.log(LogLevel.DEBUG, 'Failed to fetch ws token')
-      this.channelStatus.delete(channel)
-      return
-    }
-
-    if (!this.messages.has(channel)) {
-      this.messages.set(channel, new MessageStorage())
-    }
-
-    const conn = new WtvChatConnection(
-      channel,
-      (msg) => this.handleIncomingMessage(msg),
-      () => this.handleConnectionOpen(channel),
-      () => this.handleConnectionClose(channel),
-    )
-    this.connections.set(channel, conn)
-
-    if (!this.startedAtMs) {
-      this.startedAtMs = Temporal.Now.instant().epochMilliseconds
-    }
-
-    await conn.connect(token)
-
-    if (!this.connections.has(channel)) {
-      this.log(LogLevel.DEBUG, 'Failed to connect')
-      this.channelStatus.delete(channel)
-      return
+    if (
+      this.pendingOpen.delete(channel) && !this.stopped.has(channel) &&
+      !this.isHealthy(channel)
+    ) {
+      this.scheduleReconnect(channel)
     }
   }
 
@@ -143,9 +260,7 @@ export class WtvConnector implements ChatConnector {
     }
 
     const url = `${WTV_PROFILES_BY_NICKNAME_URL}/${
-      encodeURIComponent(
-        nickname,
-      )
+      encodeURIComponent(nickname)
     }`
 
     let response: Response
@@ -160,6 +275,15 @@ export class WtvConnector implements ChatConnector {
       this.log(
         LogLevel.DEBUG,
         `Failed to fetch profile for ${nickname}: ${error}`,
+      )
+      return null
+    }
+
+    if (response.status === 404) {
+      this.missingProfiles.add(nickname)
+      this.log(
+        LogLevel.DEBUG,
+        `Failed to fetch profile for ${nickname}: ${response.status}`,
       )
       return null
     }
@@ -197,7 +321,7 @@ export class WtvConnector implements ChatConnector {
   }
 
   async fetchWsToken(userId: string): Promise<string | null> {
-    const url = `${WTV_CHATS_JOIN_URL}/${encodeURIComponent(userId)}/join`
+    const url = `${WTV_CHATS_URL}/${encodeURIComponent(userId)}/join`
 
     let response: Response
     try {
@@ -234,14 +358,15 @@ export class WtvConnector implements ChatConnector {
 
   disconnect(channelOrig: string): void {
     const channel = normalizeChannel(channelOrig)
+    this.stopped.add(channel)
+    this.clearReconnectTimer(channel)
+    this.reconnectAttempts.delete(channel)
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
 
     const conn = this.connections.get(channel)
-    if (conn) {
-      conn.close()
-      this.connections.delete(channel)
-    }
+    this.connections.delete(channel)
+    conn?.close(true)
   }
 
   cleanup(): void {
@@ -258,7 +383,7 @@ export class WtvConnector implements ChatConnector {
       }
     }
 
-    if (this.connections.size === 0) {
+    if (this.connections.size === 0 && this.channelStatus.size === 0) {
       this.startedAtMs = 0
     }
   }
@@ -325,7 +450,7 @@ export class WtvConnector implements ChatConnector {
     }
     if (anyOpen) {
       status.status = 'connected'
-    } else if (anyConnecting) {
+    } else if (anyConnecting || this.opening.size > 0) {
       status.status = 'connecting'
     }
 

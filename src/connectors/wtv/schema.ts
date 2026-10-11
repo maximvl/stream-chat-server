@@ -11,24 +11,16 @@ export const JoinChatResponse = type({
   token: 'string',
 })
 
-export const WsEventEnvelope = type({
-  Type: 'string',
-  Id: 'string',
-  RequestId: 'string',
-  EventName: 'string',
-  Attributes: {
-    data: 'string',
-  },
-})
-
+// nicknameColor is omitted by most senders. tags is usually present, including
+// an empty list, but a missing list should not drop the message.
 export const WsChatMsgData = type({
   messageId: 'string',
   content: 'string',
   sender: {
     userId: 'string',
     nickname: 'string',
-    tags: 'string[]',
-    nicknameColor: 'string',
+    'tags?': 'string[]',
+    'nicknameColor?': 'string',
   },
   createdAt: 'string',
 })
