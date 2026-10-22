@@ -62,3 +62,15 @@ export const ChannelInfoResponse = type({
     id: 'number',
   }),
 })
+
+export const RealtimeConnectionResponse = type({
+  data: {
+    connections: type({
+      provider: 'string',
+      credentials: {
+        'app_key?': 'string',
+        'cluster?': 'string',
+      },
+    }).array(),
+  },
+})

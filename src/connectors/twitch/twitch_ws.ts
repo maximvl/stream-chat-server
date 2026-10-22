@@ -49,6 +49,9 @@ export class TwitchConnector implements ChatConnector {
   server: ChatServer = 'twitch'
   websocket: WebSocket | null = null
 
+  // Shared by concurrent connect() calls so they don't send before the socket is open
+  opening: Promise<void> | null = null
+
   channelsMap: Map<ChannelName, InternalChannelId> = new Map()
   reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
 
@@ -81,10 +84,13 @@ export class TwitchConnector implements ChatConnector {
 
   async connect(channelOrig: string): Promise<void> {
     const channel = normalizeChannel(channelOrig)
-    if (!this.websocket) {
-      await this.initWebsocket()
+    if (!this.websocket && !this.opening) {
+      this.opening = this.initWebsocket().finally(() => {
+        this.opening = null
+      })
     }
-    if (!this.websocket) {
+    await this.opening
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
       this.log(LogLevel.DEBUG, 'Failed to connect')
       return
     }
@@ -149,10 +155,10 @@ export class TwitchConnector implements ChatConnector {
   }
 
   websocketSend(message: string) {
-    if (!this.websocket) {
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
       this.log(
         LogLevel.DEBUG,
-        `Failed to send message, websocket not initialized: [${message}]`,
+        `Failed to send message, websocket not open: [${message}]`,
       )
       return
     }
@@ -161,26 +167,30 @@ export class TwitchConnector implements ChatConnector {
   }
 
   async initWebsocket() {
-    this.websocket = new WebSocket('wss://irc-ws.chat.twitch.tv:443', {
+    const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443', {
       headers: {
         Origin: 'https://www.twitch.tv',
       },
     })
-    this.websocket.onopen = () => {
+    this.websocket = ws
+
+    ws.onopen = () => {
       this.log(LogLevel.DEBUG, 'Connection opened')
       this.startedAtMs = Temporal.Now.instant().epochMilliseconds
     }
-    this.websocket.onmessage = (event) => {
+    ws.onmessage = (event) => {
       this.handleMessage(event)
     }
-    this.websocket.onclose = () => {
-      this.handleClose()
+    ws.onclose = (event) => {
+      this.log(LogLevel.DEBUG, `Close code: ${event.code} ${event.reason}`)
+      // A late close event of an old socket must not kill the current one
+      if (this.websocket === ws) this.handleClose()
     }
-    this.websocket.onerror = (error) => {
+    ws.onerror = (error) => {
       this.log(LogLevel.DEBUG, `Connection error: ${JSON.stringify(error)}`)
     }
 
-    while (this.websocket?.readyState !== WebSocket.OPEN) {
+    while (ws.readyState === WebSocket.CONNECTING) {
       this.log(LogLevel.DEBUG, 'Waiting for connection to open...')
       // Small delay to avoid busy waiting
       await sleep(200)
@@ -188,8 +198,9 @@ export class TwitchConnector implements ChatConnector {
 
     this.log(
       LogLevel.DEBUG,
-      `ws state: ${this.websocket?.readyState} (expected: ${WebSocket.OPEN})`,
+      `ws state: ${ws.readyState} (expected: ${WebSocket.OPEN})`,
     )
+    if (ws.readyState !== WebSocket.OPEN) return
 
     // Anonymous read-only login: we never send chat messages, so there's no
     // need for a real Twitch account/OAuth token to join channels and read

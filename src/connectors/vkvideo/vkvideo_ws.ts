@@ -34,6 +34,9 @@ export class VkVideoConnector implements ChatConnector {
   websocket: WebSocket | null = null
   startedAtMs: number = 0
 
+  // Shared by concurrent connect() calls so they don't send before the socket is open
+  opening: Promise<void> | null = null
+
   messageCounter = 0
 
   channelStatus: Map<ChannelName, ChannelStatus> = new Map()
@@ -62,27 +65,30 @@ export class VkVideoConnector implements ChatConnector {
       }
     }
 
-    this.websocket = new WebSocket(this.websocketHost, {
+    const ws = new WebSocket(this.websocketHost, {
       headers: {
         Origin: 'https://live.vkvideo.ru',
       },
     })
+    this.websocket = ws
 
-    this.websocket.onopen = () => {
+    ws.onopen = () => {
       this.log(LogLevel.DEBUG, 'Connection opened')
       this.startedAtMs = Temporal.Now.instant().epochMilliseconds
     }
-    this.websocket.onmessage = (event) => {
+    ws.onmessage = (event) => {
       this.handleMessage(event)
     }
-    this.websocket.onclose = () => {
-      this.handleClose()
+    ws.onclose = (event) => {
+      this.log(LogLevel.DEBUG, `Close code: ${event.code} ${event.reason}`)
+      // A late close event of an old socket must not kill the current one
+      if (this.websocket === ws) this.handleClose()
     }
-    this.websocket.onerror = (error) => {
+    ws.onerror = (error) => {
       this.log(LogLevel.DEBUG, `Connection error: ${JSON.stringify(error)}`)
     }
 
-    while (this.websocket.readyState !== WebSocket.OPEN) {
+    while (ws.readyState === WebSocket.CONNECTING) {
       this.log(LogLevel.DEBUG, 'Waiting for connection to open...')
       // Small delay to avoid busy waiting
       await sleep(200)
@@ -96,7 +102,16 @@ export class VkVideoConnector implements ChatConnector {
         name: 'js',
       },
     }
-    this.websocket.send(JSON.stringify(loginMessage))
+    this.send(loginMessage)
+  }
+
+  send(data: unknown): boolean {
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
+      this.log(LogLevel.DEBUG, 'Websocket not open, dropping send')
+      return false
+    }
+    this.websocket.send(JSON.stringify(data))
+    return true
   }
 
   handleClose() {
@@ -126,7 +141,7 @@ export class VkVideoConnector implements ChatConnector {
     }
 
     if (event.data === '{}') {
-      this.websocket?.send('{}')
+      this.send({})
       return
     }
 
@@ -268,10 +283,13 @@ export class VkVideoConnector implements ChatConnector {
 
   async connect(channelOrig: string) {
     const channel = normalizeChannel(channelOrig)
-    if (!this.websocket) {
-      await this.initWebsocket()
+    if (!this.websocket && !this.opening) {
+      this.opening = this.initWebsocket().finally(() => {
+        this.opening = null
+      })
     }
-    if (!this.websocket) {
+    await this.opening
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
       this.log(LogLevel.DEBUG, 'Failed to connect')
       return
     }
@@ -311,14 +329,13 @@ export class VkVideoConnector implements ChatConnector {
     const nextMessageId = this.messageCounter++
     this.subMsgChannelMap.set(nextMessageId, channel)
 
-    this.websocket.send(
-      JSON.stringify({
-        id: nextMessageId,
-        subscribe: {
-          channel: channelId,
-        },
-      }),
-    )
+    // Socket may have closed while fetching; status is then 'disconnected' and the next connect retries
+    this.send({
+      id: nextMessageId,
+      subscribe: {
+        channel: channelId,
+      },
+    })
   }
 
   disconnect(channelOrig: string) {
@@ -330,14 +347,12 @@ export class VkVideoConnector implements ChatConnector {
     if (!channelId) {
       return
     }
-    this.websocket?.send(
-      JSON.stringify({
-        id: this.messageCounter++,
-        unsubscribe: {
-          channel: channelId,
-        },
-      }),
-    )
+    this.send({
+      id: this.messageCounter++,
+      unsubscribe: {
+        channel: channelId,
+      },
+    })
   }
 
   cleanup(): void {
@@ -420,8 +435,14 @@ export class VkVideoConnector implements ChatConnector {
   ): Promise<InternalChannelId | null> {
     const url =
       `https://api.live.vkvideo.ru/v1/blog/${channel}/public_video_stream/chat/user/`
-    const response = await fetch(url)
-    const data = await response.json()
+    let data: unknown
+    try {
+      const response = await fetch(url)
+      data = await response.json()
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
+      return null
+    }
     const channelInfo = ChannelInfoResponse(data)
     if (channelInfo instanceof type.errors) {
       console.error(

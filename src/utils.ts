@@ -5,7 +5,11 @@ export async function sleep(ms: number) {
 }
 
 export function myLog(level: LogLevel, ...args: unknown[]) {
-  const timestamp = Temporal.Now.instant().toString({ smallestUnit: 'seconds' })
+  // Local time of the TZ env (Europe/Moscow in Docker)
+  const timestamp = Temporal.Now.zonedDateTimeISO().toString({
+    smallestUnit: 'seconds',
+    timeZoneName: 'never',
+  })
   if (level <= LOG_LEVEL) {
     console.log(`[${timestamp}]`, ...args)
   }

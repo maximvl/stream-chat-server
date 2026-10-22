@@ -13,6 +13,7 @@ import {
 import { myLog, sleep } from '../../utils.ts'
 import {
   ChannelInfoResponse,
+  RealtimeConnectionResponse,
   WsChatMsg,
   WsChatMsgData,
   WsPong,
@@ -40,30 +41,75 @@ export class KickConnector implements ChatConnector {
     myLog(level, '[kick]', ...msgs)
   }
 
-  async initWebsocket() {
-    this.websocket = new WebSocket(
-      'wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.5.0&flash=false',
-    )
+  // Shared by concurrent connect() calls so they don't send before the socket is open
+  opening: Promise<void> | null = null
 
-    this.websocket.onopen = () => {
+  // Kick rotates its Pusher app key, so ask Kick for the current one
+  async fetchPusherAppKey(): Promise<{ appKey: string; cluster: string }> {
+    const fallback = { appKey: '34bf7a0ff419a2a775b9', cluster: 'us2' }
+    try {
+      const response = await fetch(
+        'https://web.kick.com/api/v1/realtime/connection',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            client: { id: crypto.randomUUID(), type: 'web' },
+            capabilities: { accepted_providers: [{ provider: 'pusher' }] },
+          }),
+        },
+      )
+      const data = RealtimeConnectionResponse(await response.json())
+      if (data instanceof type.errors) {
+        this.log(LogLevel.DEBUG, `Bad realtime config: ${data.summary}`)
+        return fallback
+      }
+      const pusher = data.data.connections.find((c) => c.provider === 'pusher')
+      const { app_key, cluster } = pusher?.credentials ?? {}
+      return app_key && cluster ? { appKey: app_key, cluster } : fallback
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch realtime config: ${error}`)
+      return fallback
+    }
+  }
+
+  async initWebsocket() {
+    const { appKey, cluster } = await this.fetchPusherAppKey()
+    const ws = new WebSocket(
+      `wss://ws-${cluster}.pusher.com/app/${appKey}?protocol=7&client=js&version=8.5.0&flash=false`,
+    )
+    this.websocket = ws
+
+    ws.onopen = () => {
       this.log(LogLevel.DEBUG, 'Connection opened')
       this.startedAtMs = Temporal.Now.instant().epochMilliseconds
     }
-    this.websocket.onmessage = (event) => {
+    ws.onmessage = (event) => {
       this.handleMessage(event)
     }
-    this.websocket.onclose = () => {
-      this.handleClose()
+    ws.onclose = (event) => {
+      this.log(LogLevel.DEBUG, `Close code: ${event.code} ${event.reason}`)
+      // A late close event of an old socket must not kill the current one
+      if (this.websocket === ws) this.handleClose()
     }
-    this.websocket.onerror = (error) => {
+    ws.onerror = (error) => {
       this.log(LogLevel.DEBUG, `Connection error: ${JSON.stringify(error)}`)
     }
 
-    while (this.websocket.readyState !== WebSocket.OPEN) {
+    while (ws.readyState === WebSocket.CONNECTING) {
       this.log(LogLevel.DEBUG, 'Waiting for connection to open...')
       // Small delay to avoid busy waiting
       await sleep(200)
     }
+  }
+
+  send(data: unknown): boolean {
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
+      this.log(LogLevel.DEBUG, 'Websocket not open, dropping send')
+      return false
+    }
+    this.websocket.send(JSON.stringify(data))
+    return true
   }
 
   handleClose() {
@@ -213,20 +259,22 @@ export class KickConnector implements ChatConnector {
   }
 
   sendPing(): Promise<void> {
-    this.websocket?.send(JSON.stringify({
-      event: 'pusher:ping',
-      data: {},
-    }))
+    if (this.websocket) {
+      this.send({ event: 'pusher:ping', data: {} })
+    }
     return Promise.resolve()
   }
 
   async connect(channelOrig: string): Promise<void> {
     const channel = normalizeChannel(channelOrig)
 
-    if (!this.websocket) {
-      await this.initWebsocket()
+    if (!this.websocket && !this.opening) {
+      this.opening = this.initWebsocket().finally(() => {
+        this.opening = null
+      })
     }
-    if (!this.websocket) {
+    await this.opening
+    if (this.websocket?.readyState !== WebSocket.OPEN) {
       this.log(LogLevel.DEBUG, 'Failed to connect')
       return
     }
@@ -263,21 +311,28 @@ export class KickConnector implements ChatConnector {
     this.channelsMap.set(channel, channelId)
     this.reverseChannelsMap.set(channelId, channel)
 
-    this.websocket.send(JSON.stringify({
+    // Socket may have closed while fetching; status is then 'disconnected' and the next connect retries
+    this.send({
       event: 'pusher:subscribe',
       data: {
         auth: '',
         channel: channelId,
       },
-    }))
+    })
   }
 
   async fetchChannelId(
     channel: ChannelName,
   ): Promise<InternalChannelId | null> {
     const url = `https://kick.com/api/v2/channels/${channel}`
-    const response = await fetch(url)
-    const data = await response.json()
+    let data: unknown
+    try {
+      const response = await fetch(url)
+      data = await response.json()
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
+      return null
+    }
     const channelInfo = ChannelInfoResponse(data)
     if (channelInfo instanceof type.errors) {
       console.error(
@@ -300,12 +355,12 @@ export class KickConnector implements ChatConnector {
       return
     }
 
-    this.websocket?.send(JSON.stringify({
+    this.send({
       event: 'pusher:unsubscribe',
       data: {
         channel: channelId,
       },
-    }))
+    })
   }
 
   cleanup(): void {
