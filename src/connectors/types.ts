@@ -107,6 +107,20 @@ export type WtvUserFields = {
   tags: string[]
 }
 
+export type GoodgameUserFields = {
+  // Hex color of the nick; colorName is GoodGame's own color class (simple, premium, streamer...)
+  color: string
+  colorName: string
+  // Status icon name (ggplus, star, top1...); GoodGame draws them as CSS masks, there is no image
+  icon: string
+  // Rights in this channel: 10 moderator, 20 streamer, higher ones are site staff
+  rights: number
+  isStreamer: boolean
+  isModerator: boolean
+  // Has a premium subscription to this channel
+  subscriber: boolean
+}
+
 export type VkUserFields = {
   nickColor: number
   color?: string
@@ -123,6 +137,7 @@ export type ChatUser = {
   kickFields?: KickUserFields
   vkFields?: VkUserFields
   wtvFields?: WtvUserFields
+  goodgameFields?: GoodgameUserFields
 }
 
 export interface TokenManager {

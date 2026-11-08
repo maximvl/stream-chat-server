@@ -11,6 +11,7 @@ import { TwitchConnector } from './connectors/twitch/twitch_ws.ts'
 import { VkVideoConnector } from './connectors/vkvideo/vkvideo_ws.ts'
 import { KickConnector } from './connectors/kick/kick_ws.ts'
 import { WtvConnector } from './connectors/wtv/wtv_ws.ts'
+import { GoodgameConnector } from './connectors/goodgame/goodgame_ws.ts'
 import { ChatConnector } from './connectors/types.ts'
 
 // One failing connector must neither stop the loop nor crash the process
@@ -43,6 +44,9 @@ if (import.meta.main) {
   }
   if (!DISABLED_CONNECTORS.includes('wtv')) {
     AppState.connectors.set('wtv', new WtvConnector())
+  }
+  if (!DISABLED_CONNECTORS.includes('goodgame')) {
+    AppState.connectors.set('goodgame', new GoodgameConnector())
   }
 
   connectorLoop('cleanup', 1000 * 60 * 5, (c) => c.cleanup())

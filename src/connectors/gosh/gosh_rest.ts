@@ -13,6 +13,9 @@ import {
 } from '../types.ts'
 import { MessageData, MessagesResponse } from './schema.ts'
 
+// Not registered in main.ts: gosh.com polls fetch_msg (api.gosh.com) only with a
+// guest session and a per-request X-Signature header computed by its web client,
+// so there is no public unauthenticated access to read chats.
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
 type ChannelQuery = {

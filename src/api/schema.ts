@@ -1,6 +1,8 @@
 import { type } from 'arktype'
 
-export const ChatServer = type('"twitch" | "vkvideo" | "kick" | "gosh" | "wtv"')
+export const ChatServer = type(
+  '"twitch" | "vkvideo" | "kick" | "gosh" | "wtv" | "goodgame"',
+)
 export type ChatServer = typeof ChatServer.infer
 
 export const ConnectRequest = type({
