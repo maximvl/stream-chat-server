@@ -6,9 +6,12 @@ import {
   MAX_MESSAGES_RESPONSE,
 } from '../config.ts'
 import { ChannelName } from '../connectors/types.ts'
+import { subscribe } from '../connectors/chatEvents.ts'
+import { normalizeChannel, toChatId } from '../connectors/utils.ts'
 import {
   ChatLastMessagesRequest,
   ChatMessagesRequest,
+  ChatStatusRequest,
   ConnectRequest,
 } from './schema.ts'
 import { type } from 'arktype'
@@ -79,9 +82,92 @@ const routes: Record<
   '/api/chat_last_messages': {
     GET: chat_last_messages,
   },
+  '/api/chat_stream': {
+    GET: chat_stream,
+  },
   '/api/status': {
     GET: app_status,
   },
+}
+
+const STREAM_KEEPALIVE_MS = 20_000
+
+// Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear'} events of one chat
+function chat_stream(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const params = ChatStatusRequest({
+    server: url.searchParams.get('server'),
+    channel: url.searchParams.get('channel'),
+  })
+  if (params instanceof type.errors) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ errors: params.issues }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+
+  const connector = AppState.connectors.get(params.server)
+  if (!connector) {
+    return Promise.resolve(
+      new Response(JSON.stringify({ errors: ['Unsupported chat server'] }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+
+  const channel = normalizeChannel(params.channel)
+  const encoder = new TextEncoder()
+  let cleanup = () => {}
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk))
+        } catch {
+          cleanup()
+        }
+      }
+      const unsubscribe = subscribe(
+        toChatId(params.server, channel),
+        (event) => send(`data: ${JSON.stringify(event)}\n\n`),
+      )
+      // (Re)joins the channel if its socket dropped and marks it as read so
+      // the inactivity cleanup doesn't disconnect a chat that is on screen.
+      // The ping is a named event (not a comment) so clients can detect a
+      // stream that silently died and reconnect.
+      const keepAlive = () => {
+        connector.connect(channel).catch(() => {})
+        connector.getMessages(channel, Infinity)
+        send('event: ping\ndata: {}\n\n')
+      }
+      // EventSource waits this long before reconnecting after a drop
+      send('retry: 3000\n\n')
+      keepAlive()
+      const timer = setInterval(keepAlive, STREAM_KEEPALIVE_MS)
+      cleanup = () => {
+        clearInterval(timer)
+        unsubscribe()
+      }
+    },
+    cancel() {
+      cleanup()
+    },
+  })
+
+  return Promise.resolve(
+    new Response(body, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        // nginx buffers proxied responses by default, which stalls SSE
+        'x-accel-buffering': 'no',
+      },
+    }),
+  )
 }
 
 async function chat_connect(req: Request): Promise<Response> {

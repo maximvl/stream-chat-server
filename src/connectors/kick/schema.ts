@@ -47,6 +47,17 @@ export const WsChatMsgData = type({
   },
 })
 
+// Moderation events arrive on the same chatroom channel as messages
+export const WsModerationEvent = type({
+  event:
+    '"App\\Events\\MessageDeletedEvent" | "App\\Events\\UserBannedEvent" | "App\\Events\\ChatroomClearEvent"',
+  data: 'string',
+  channel: 'string',
+})
+
+export const MessageDeletedData = type({ message: { id: 'string' } })
+export const UserBannedData = type({ user: { id: 'number | string' } })
+
 export const WsSubscribed = type({
   event: '"pusher_internal:subscription_succeeded"',
   data: 'string',

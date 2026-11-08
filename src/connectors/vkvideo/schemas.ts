@@ -74,9 +74,18 @@ const ContentDataText = type({
   content: 'string',
 })
 
+const ContentDataSmile = type({
+  type: '"smile"',
+  id: 'string',
+  name: 'string',
+  largeUrl: 'string',
+})
+
 const ContentIgnore = type({})
 
-const ContentData = ContentDataMention.or(ContentDataText).or(ContentIgnore)
+const ContentData = ContentDataMention.or(ContentDataText).or(
+  ContentDataSmile,
+).or(ContentIgnore)
 
 export const WsChatMessage = type({
   push: type({

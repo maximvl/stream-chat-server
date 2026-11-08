@@ -3,6 +3,8 @@ import {
   MAX_MESSAGES_PER_CHANNEL,
 } from '../config.ts'
 import { ChatMessage } from './types.ts'
+import { emit } from './chatEvents.ts'
+import { toChatId } from './utils.ts'
 
 export class MessageStorage {
   messages: ChatMessage[] = []
@@ -13,6 +15,10 @@ export class MessageStorage {
     if (this.messages.length > MAX_MESSAGES_PER_CHANNEL) {
       this.messages.shift()
     }
+    emit(toChatId(message.server, message.channel), {
+      type: 'message',
+      message,
+    })
   }
 
   getMessagesAfter(timestamp: number) {

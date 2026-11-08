@@ -29,5 +29,32 @@ export const BadgeResponseSchema = type({
   }).array(),
 })
 
+export const CheermotesResponseSchema = type({
+  data: type({
+    prefix: 'string',
+    tiers: type({
+      min_bits: 'number',
+      color: 'string',
+      images: {
+        dark: { animated: { '4': 'string' } },
+      },
+    }).array(),
+  }).array(),
+})
+
+export const RewardsResponseSchema = type({
+  data: {
+    channel: type({
+      'communityPointsSettings?': type({
+        customRewards: type({
+          id: 'string',
+          title: 'string',
+          'prompt?': 'string | null',
+        }).array(),
+      }).or('null'),
+    }).or('null'),
+  },
+})
+
 export type BadgeVersion =
   (typeof BadgeResponseSchema.infer)['data'][number]['versions'][number]

@@ -2,6 +2,7 @@ import {
   ChannelName,
   ChannelStatus,
   ChatConnector,
+  ChatEmote,
   ChatMessage,
   ChatUser,
   ConnectorStatus,
@@ -217,6 +218,7 @@ export class VkVideoConnector implements ChatConnector {
 
     const mentions: VkMessageFields['mentions'] = []
     const messageParts: string[] = []
+    const emotes: ChatEmote[] = []
 
     for (const content of data.data) {
       if (!('type' in content)) {
@@ -241,6 +243,15 @@ export class VkVideoConnector implements ChatConnector {
           } catch {
             // Ignore non-JSON content
           }
+          break
+        case 'smile':
+          // Kept as its name in the text, like Twitch emotes, so clients can swap it for the image
+          messageParts.push(content.name)
+          emotes.push({
+            id: content.id,
+            name: content.name,
+            imageUrl: content.largeUrl,
+          })
       }
     }
 
@@ -264,6 +275,7 @@ export class VkVideoConnector implements ChatConnector {
       text: messageParts.join(' '),
       server: 'vkvideo',
       channel,
+      emotes,
       vkFields: {
         mentions,
       },

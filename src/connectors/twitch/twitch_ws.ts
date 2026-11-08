@@ -10,6 +10,7 @@ import {
   ChannelName,
   ChannelStatus,
   ChatConnector,
+  ChatEmote,
   ChatMessage,
   ChatServer,
   ChatUser,
@@ -22,10 +23,20 @@ import {
 import {
   BadgeResponseSchema,
   BadgeVersion,
+  CheermotesResponseSchema,
+  RewardsResponseSchema,
   UserResponseSchema,
 } from './schemas.ts'
+
+// Client id of twitch.tv itself; its public GQL answers channel info without user auth
+const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+
+// Cheermote prefix (lower case) -> tiers sorted by min_bits
+type CheerTier = { minBits: number; color: string; imageUrl: string }
+type Cheermotes = Map<string, CheerTier[]>
 import { type } from 'arktype'
-import { normalizeChannel } from '../utils.ts'
+import { normalizeChannel, toChatId } from '../utils.ts'
+import { emit } from '../chatEvents.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -60,6 +71,9 @@ export class TwitchConnector implements ChatConnector {
   globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
   badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
     new Map()
+  cheermotesByChannel: Map<ChannelName, Cheermotes> = new Map()
+  // Channel points rewards whose title or prompt carries FFZ:GE (FrankerFaceZ giant emote convention)
+  giantRewardsByChannel: Map<ChannelName, Set<string>> = new Map()
 
   messages: Map<ChannelName, MessageStorage> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
@@ -123,6 +137,17 @@ export class TwitchConnector implements ChatConnector {
     try {
       const channelBadges = await this.fetch_badges(channel)
       this.badgesByChannel.set(channel, channelBadges)
+      this.fetch_giant_rewards(channel)
+        .then((rewards) => this.giantRewardsByChannel.set(channel, rewards))
+        .catch((error) =>
+          this.log(LogLevel.DEBUG, `Failed to fetch rewards: ${error}`)
+        )
+      // Cheer images are as optional as badges: a failure only costs the pictures
+      this.fetch_cheermotes(channel)
+        .then((cheermotes) => this.cheermotesByChannel.set(channel, cheermotes))
+        .catch((error) =>
+          this.log(LogLevel.DEBUG, `Failed to fetch cheermotes: ${error}`)
+        )
     } catch (error) {
       this.log(
         LogLevel.DEBUG,
@@ -208,7 +233,8 @@ export class TwitchConnector implements ChatConnector {
     const anonymousNick = `justinfan${Math.floor(Math.random() * 100000)}`
     this.websocketSend('PASS just_a_password')
     this.websocketSend(`NICK ${anonymousNick}`)
-    this.websocketSend('CAP REQ :twitch.tv/tags')
+    // commands: CLEARMSG/CLEARCHAT, so deleted messages leave overlays
+    this.websocketSend('CAP REQ :twitch.tv/tags twitch.tv/commands')
   }
 
   handleClose() {
@@ -247,6 +273,9 @@ export class TwitchConnector implements ChatConnector {
         this.websocketSend('PONG :tmi.twitch.tv')
         continue
       }
+      if (this.handleModeration(trimmed)) {
+        continue
+      }
       const msg = this.parseMessage(trimmed)
       if (msg) {
         let storage = this.messages.get(msg.channel)
@@ -257,6 +286,125 @@ export class TwitchConnector implements ChatConnector {
         storage.addMessage(msg)
       }
     }
+  }
+
+  // CLEARMSG: one message deleted; CLEARCHAT: user banned/timed out, or whole chat cleared.
+  // Only live subscribers are told: polled history stays as is for existing API clients
+  handleModeration(msg: string): boolean {
+    const parts = msg.split(' ')
+    const command = parts[2]
+    if (command !== 'CLEARMSG' && command !== 'CLEARCHAT') {
+      return false
+    }
+    const channel = this.reverseChannelsMap.get(
+      parts[3]?.toLowerCase() as InternalChannelId,
+    )
+    if (!channel) {
+      return true
+    }
+    const attrs = this.parseAttrs(parts[0])
+    const storage = this.messages.get(channel)
+    const chatId = toChatId(this.server, channel)
+
+    if (command === 'CLEARMSG') {
+      const messageId = attrs['target-msg-id'] as MessageId | undefined
+      if (messageId) {
+        emit(chatId, { type: 'delete', messageIds: [messageId] })
+      }
+    } else if (attrs['target-user-id']) {
+      const userId = attrs['target-user-id']
+      const messageIds = (storage?.messages ?? [])
+        .filter((m) => m.user.twitchFields?.userId === userId)
+        .map((m) => m.id)
+      if (messageIds.length) {
+        emit(chatId, { type: 'delete', messageIds })
+      }
+    } else {
+      emit(chatId, { type: 'clear' })
+    }
+    return true
+  }
+
+  // Twitch emote positions are code point ranges: "25:0-4,12-16/1902:6-10"
+  parseEmotes(emotesTag: string | undefined, text: string): ChatEmote[] {
+    if (!emotesTag) {
+      return []
+    }
+    const chars = Array.from(text)
+    const result: ChatEmote[] = []
+    for (const emote of emotesTag.split('/')) {
+      const [id, ranges] = emote.split(':')
+      const [start, end] = (ranges ?? '').split(',')[0].split('-').map(Number)
+      if (!id || !Number.isInteger(start) || !Number.isInteger(end)) {
+        continue
+      }
+      result.push({
+        id,
+        name: chars.slice(start, end + 1).join(''),
+        imageUrl:
+          `https://static-cdn.jtvnw.net/emoticons/v2/${id}/default/dark/3.0`,
+      })
+    }
+    return result
+  }
+
+  // GIF keyboard: "start-end|id|url,..." over code point ranges of the text
+  parseGifs(gifsTag: string | undefined, text: string): ChatEmote[] {
+    if (!gifsTag) {
+      return []
+    }
+    const chars = Array.from(text)
+    const result: ChatEmote[] = []
+    for (const entry of gifsTag.split(',')) {
+      const parts = entry.split('|')
+      // A URL may itself contain "|", so everything past the id belongs to it
+      const url = parts.slice(2).join('|')
+      const [start, end] = (parts[0] ?? '').split('-').map(Number)
+      if (
+        !Number.isInteger(start) || !Number.isInteger(end) || start < 0 ||
+        end < start || !/^https:\/\//i.test(url)
+      ) {
+        continue
+      }
+      result.push({
+        id: parts[1] ?? '',
+        name: chars.slice(start, end + 1).join(''),
+        imageUrl: url,
+        kind: 'gif',
+      })
+    }
+    return result
+  }
+
+  // "Cheer100 nice Kappa50" in a message with bits: each cheer word becomes its tier image
+  parseCheers(
+    channel: ChannelName,
+    bitsTag: string | undefined,
+    text: string,
+  ): ChatEmote[] {
+    const cheermotes = this.cheermotesByChannel.get(channel)
+    if (!cheermotes || !(Number(bitsTag) > 0)) {
+      return []
+    }
+    const result: ChatEmote[] = []
+    for (const word of text.split(/\s+/)) {
+      const match = /^([a-z]+)(\d+)$/i.exec(word)
+      const tiers = match && cheermotes.get(match[1].toLowerCase())
+      if (!match || !tiers) {
+        continue
+      }
+      const bits = Number(match[2])
+      const tier = tiers.filter((t) => t.minBits <= bits).at(-1) ?? tiers[0]
+      result.push({
+        id: match[1].toLowerCase(),
+        name: word,
+        imageUrl: tier.imageUrl,
+        kind: 'cheer',
+        bits,
+        color: tier.color,
+      })
+    }
+    return result
   }
 
   parseMessage(msg: string): ChatMessage | null {
@@ -353,11 +501,16 @@ export class TwitchConnector implements ChatConnector {
     const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
 
     const twitchFields: TwitchUserFields = {
+      userId: attrs['user-id'] ?? '',
       color: attrs['color'] ?? '',
       mod: attrs['mod'] === '1',
       subscriber: attrs['subscriber'] === '1',
       turbo: attrs['turbo'] === '1',
       highlighted: attrs['msg-id'] === 'highlighted-message',
+      giantEmote: attrs['msg-id'] === 'gigantified-emote-message' ||
+        (this.giantRewardsByChannel.get(channel)?.has(
+          attrs['custom-reward-id'] ?? '',
+        ) ?? false),
       badges,
     }
 
@@ -379,13 +532,19 @@ export class TwitchConnector implements ChatConnector {
       ? Number(attrs['tmi-sent-ts'])
       : Temporal.Now.instant().epochMilliseconds
 
+    const text = rawMsg.message.slice(1)
     const message: ChatMessage = {
       id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
       timestampMs,
       user: messageUser,
       server: 'twitch',
       channel,
-      text: rawMsg.message.slice(1),
+      text,
+      emotes: [
+        ...this.parseEmotes(attrs['emotes'], text),
+        ...this.parseGifs(attrs['gifs'], text),
+        ...this.parseCheers(channel, attrs['bits'], text),
+      ],
     }
     if (message.text.trim()) {
       this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
@@ -394,8 +553,15 @@ export class TwitchConnector implements ChatConnector {
   }
 
   parseAttrs(attrsStr: string): Record<string, string> {
-    const parts = attrsStr.split(';')
+    const parts = attrsStr.replace(/^@/, '').split(';')
     const keys = new Set([
+      'user-id',
+      'emotes',
+      'target-msg-id',
+      'target-user-id',
+      'bits',
+      'gifs',
+      'custom-reward-id',
       'color',
       'badges',
       'display-name',
@@ -518,6 +684,65 @@ export class TwitchConnector implements ChatConnector {
       )
     }
     return badgesDict
+  }
+
+  // Reward titles aren't in IRC (only custom-reward-id); Twitch's public web GQL lists them without auth
+  async fetch_giant_rewards(channel: ChannelName): Promise<Set<string>> {
+    const response = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: {
+        'Client-Id': TWITCH_WEB_CLIENT_ID,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query:
+          'query($login: String!) { channel(name: $login) { communityPointsSettings { customRewards { id title prompt } } } }',
+        variables: { login: channel },
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`rewards: ${response.status}`)
+    }
+    const parsed = RewardsResponseSchema(await response.json())
+    if (parsed instanceof type.errors) {
+      throw new Error(`rewards: ${parsed.summary}`)
+    }
+    const rewards =
+      parsed.data.channel?.communityPointsSettings?.customRewards ?? []
+    return new Set(
+      rewards
+        .filter((r) => `${r.title} ${r.prompt ?? ''}`.includes('FFZ:GE'))
+        .map((r) => r.id),
+    )
+  }
+
+  async fetch_cheermotes(channel: ChannelName): Promise<Cheermotes> {
+    const broadcasterId = await this.fetch_broadcaster_id(channel)
+    const response = await fetch(
+      `https://api.twitch.tv/helix/bits/cheermotes?broadcaster_id=${broadcasterId}`,
+      { headers: await this.web_auth_headers() },
+    )
+    if (!response.ok) {
+      throw new Error(`cheermotes: ${response.status}`)
+    }
+    const parsed = CheermotesResponseSchema(await response.json())
+    if (parsed instanceof type.errors) {
+      throw new Error(`cheermotes: ${parsed.summary}`)
+    }
+    const cheermotes: Cheermotes = new Map()
+    for (const cheer of parsed.data) {
+      cheermotes.set(
+        cheer.prefix.toLowerCase(),
+        cheer.tiers
+          .map((t) => ({
+            minBits: t.min_bits,
+            color: t.color,
+            imageUrl: t.images.dark.animated['4'],
+          }))
+          .sort((a, b) => a.minBits - b.minBits),
+      )
+    }
+    return cheermotes
   }
 
   getBadge(params: {

@@ -13,15 +13,19 @@ import {
 import { myLog, sleep } from '../../utils.ts'
 import {
   ChannelInfoResponse,
+  MessageDeletedData,
   RealtimeConnectionResponse,
+  UserBannedData,
   WsChatMsg,
   WsChatMsgData,
+  WsModerationEvent,
   WsPong,
   WsSubscribed,
 } from './schema.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
-import { normalizeChannel } from '../utils.ts'
+import { normalizeChannel, toChatId } from '../utils.ts'
+import { emit } from '../chatEvents.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -175,6 +179,12 @@ export class KickConnector implements ChatConnector {
       return
     }
 
+    const moderation = WsModerationEvent(jsonData)
+    if (!(moderation instanceof type.errors)) {
+      this.handleModeration(moderation)
+      return
+    }
+
     const chatMsg = WsChatMsg(jsonData)
     if (chatMsg instanceof type.errors) {
       // No matching known message type; only log if we can identify it as chat-related
@@ -256,6 +266,49 @@ export class KickConnector implements ChatConnector {
     }
 
     storage.addMessage(msg)
+  }
+
+  // Deleted message, banned or timed out user, cleared chat. Polled history is
+  // left as is for existing API clients; only live subscribers are told.
+  handleModeration(event: typeof WsModerationEvent.infer) {
+    const channel = this.reverseChannelsMap.get(
+      event.channel as InternalChannelId,
+    )
+    if (!channel) {
+      return
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      this.log(LogLevel.DEBUG, `Bad moderation event data: ${event.data}`)
+      return
+    }
+    const chatId = toChatId('kick', channel)
+
+    if (event.event === 'App\\Events\\MessageDeletedEvent') {
+      const deleted = MessageDeletedData(data)
+      if (!(deleted instanceof type.errors)) {
+        emit(chatId, {
+          type: 'delete',
+          messageIds: [deleted.message.id as MessageId],
+        })
+      }
+    } else if (event.event === 'App\\Events\\UserBannedEvent') {
+      const banned = UserBannedData(data)
+      if (banned instanceof type.errors) {
+        return
+      }
+      const userId = String(banned.user.id)
+      const messageIds = (this.messages.get(channel)?.messages ?? [])
+        .filter((m) => m.user.id === userId)
+        .map((m) => m.id)
+      if (messageIds.length) {
+        emit(chatId, { type: 'delete', messageIds })
+      }
+    } else {
+      emit(chatId, { type: 'clear' })
+    }
   }
 
   sendPing(): Promise<void> {

@@ -242,6 +242,8 @@ export class WtvChatConnection {
     }
 
     if (eventName !== 'MESSAGE') {
+      // Unknown so far (e.g. deletions, bans): logged to learn their format
+      this.log(LogLevel.DEBUG, `Unhandled event: ${JSON.stringify(jsonData)}`)
       return
     }
 

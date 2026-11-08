@@ -49,6 +49,17 @@ export type VkMessageFields = {
   }[]
 }
 
+// Native platform emote; `name` is the exact text it replaces in `text`.
+// kind "gif": Twitch GIF keyboard; kind "cheer": a bits cheer, with its amount and tier color.
+export type ChatEmote = {
+  id: string
+  name: string
+  imageUrl: string
+  kind?: 'gif' | 'cheer'
+  bits?: number
+  color?: string
+}
+
 export type ChatMessage = {
   id: MessageId
   user: ChatUser
@@ -56,6 +67,7 @@ export type ChatMessage = {
   text: string
   server: ChatServer
   channel: ChannelName
+  emotes?: ChatEmote[]
   vkFields?: VkMessageFields
 }
 
@@ -66,12 +78,16 @@ export type TwitchBadge = {
 }
 
 export type TwitchUserFields = {
+  // Numeric Twitch id; ChatUser.id is the login
+  userId: string
   badges: TwitchBadge[]
   color: string
   mod: boolean
   subscriber: boolean
   turbo: boolean
   highlighted: boolean
+  // Last emote should be shown huge: Twitch "Gigantify an Emote" or an FFZ:GE channel points reward
+  giantEmote: boolean
 }
 
 export type KickBadge = {
