@@ -62,6 +62,7 @@ export class GoodgameConnector implements ChatConnector {
   startedAtMs: number = 0
 
   channelsMap: Map<ChannelName, InternalChannelId> = new Map()
+  // shortcut: one name per room, so a chat opened by both nick and channel key feeds only the last one; make it a set if that shows up
   reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
   // Streamer's user id per room, from success_join
   streamerIds: Map<InternalChannelId, number> = new Map()
@@ -359,28 +360,30 @@ export class GoodgameConnector implements ChatConnector {
     })
   }
 
+  // Channel pages are goodgame.ru/<streamer nick>, older links use the channel key; both name one room
   async fetchChannelId(
     channel: ChannelName,
   ): Promise<InternalChannelId | null> {
-    const url = `https://goodgame.ru/api/4/users/${
-      encodeURIComponent(channel)
-    }/stream`
-    let data: unknown
-    try {
-      const response = await fetch(url, {
-        headers: { accept: 'application/json' },
-      })
-      data = await response.json()
-    } catch (error) {
-      this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
-      return null
+    const name = encodeURIComponent(channel)
+    for (
+      const url of [
+        `https://goodgame.ru/api/4/users/${name}/stream`,
+        `https://goodgame.ru/api/4/streams/${name}`,
+      ]
+    ) {
+      try {
+        const response = await fetch(url, {
+          headers: { accept: 'application/json' },
+        })
+        const info = ChannelInfoResponse(await response.json())
+        if (!(info instanceof type.errors)) {
+          return String(info.id) as InternalChannelId
+        }
+      } catch (error) {
+        this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
+      }
     }
-    const info = ChannelInfoResponse(data)
-    if (info instanceof type.errors) {
-      this.log(LogLevel.DEBUG, `Bad channel info: ${info.summary}`)
-      return null
-    }
-    return String(info.id) as InternalChannelId
+    return null
   }
 
   disconnect(channelOrig: string): void {
