@@ -511,6 +511,7 @@ export class TwitchConnector implements ChatConnector {
         (this.giantRewardsByChannel.get(channel)?.has(
           attrs['custom-reward-id'] ?? '',
         ) ?? false),
+      firstMessage: attrs['first-msg'] === '1',
       badges,
     }
 
@@ -572,6 +573,7 @@ export class TwitchConnector implements ChatConnector {
       'mod',
       'turbo',
       'msg-id',
+      'first-msg',
     ])
     const filered = parts.filter((p) => keys.has(p.split('=')[0]))
 

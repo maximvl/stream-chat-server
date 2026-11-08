@@ -139,3 +139,17 @@ Deno.test('twitch marks giant emote messages', () => {
     [true, true, false],
   )
 })
+
+Deno.test('twitch marks first messages', () => {
+  const c = connector()
+  c.handleMessage(frame(
+    '@first-msg=1;id=m1;user-id=1;tmi-sent-ts=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi',
+  ))
+  c.handleMessage(frame(
+    '@first-msg=0;id=m2;user-id=1;tmi-sent-ts=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :hi again',
+  ))
+  assertEquals(
+    c.getMessages('chan', 0).map((m) => m.user.twitchFields?.firstMessage),
+    [true, false],
+  )
+})

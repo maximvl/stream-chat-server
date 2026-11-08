@@ -88,6 +88,8 @@ export type TwitchUserFields = {
   highlighted: boolean
   // Last emote should be shown huge: Twitch "Gigantify an Emote" or an FFZ:GE channel points reward
   giantEmote: boolean
+  // The user's first message in this channel ever
+  firstMessage: boolean
 }
 
 export type KickBadge = {
