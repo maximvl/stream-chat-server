@@ -41,8 +41,16 @@ DISABLED_CONNECTORS=twitch,vkvideo,kick,wtv,goodgame API_TOKEN=<token> PORT=8000
 | `PORT` | default `8000` |
 | `CORS_HOSTS` | not needed: browsers never talk to the node |
 
-Check: `curl -H 'Authorization: Bearer <token>' 'http://<node>:8000/api/chat_last_messages?server=youtube&channel=@LofiGirl'`
-shows `status` and, a few seconds after the first call, messages.
+Check: connect a channel that is live, then read it back a few seconds later:
+
+```sh
+curl -X POST -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' \
+  -d '{"server":"youtube","channel":"@LofiGirl"}' http://<node>:8000/api/chat_connect
+curl -H 'Authorization: Bearer <token>' 'http://<node>:8000/api/chat_last_messages?server=youtube&channel=@LofiGirl'
+```
+
+The second call shows `"status": "connected"` and the latest messages. Without the first one
+it returns `"status": null`: reading does not connect a channel.
 
 Put it behind HTTPS (nginx, Caddy) if the link between the servers is not trusted; for nginx
 turn off buffering for `/api/chat_stream` (the server already sends `X-Accel-Buffering: no`).
