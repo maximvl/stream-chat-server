@@ -1,5 +1,6 @@
 import { AppState } from '../app.ts'
 import {
+  API_TOKEN,
   CORS_HOSTS,
   DEFAULT_LAST_MESSAGES_LIMIT,
   MAX_LAST_MESSAGES_LIMIT,
@@ -64,6 +65,13 @@ export function main_handler(req: Request): Promise<Response> {
   const routeMethod = routePath[req.method]
   if (!routeMethod) {
     return Promise.resolve(new Response('Method not allowed', { status: 405 }))
+  }
+
+  if (
+    API_TOKEN && url.pathname !== '/api/status' &&
+    req.headers.get('authorization') !== `Bearer ${API_TOKEN}`
+  ) {
+    return Promise.resolve(new Response('Unauthorized', { status: 401 }))
   }
 
   return routeMethod(req)
@@ -139,8 +147,9 @@ function chat_stream(req: Request): Promise<Response> {
       // the inactivity cleanup doesn't disconnect a chat that is on screen.
       // The ping is a named event (not a comment) so clients can detect a
       // stream that silently died and reconnect.
+      // connect() gets the channel as sent: YouTube channel ids are case-sensitive
       const keepAlive = () => {
-        connector.connect(channel).catch(() => {})
+        connector.connect(params.channel).catch(() => {})
         connector.getMessages(channel, Infinity)
         send('event: ping\ndata: {}\n\n')
       }

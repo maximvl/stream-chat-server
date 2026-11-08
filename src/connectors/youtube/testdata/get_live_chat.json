@@ -1,0 +1,363 @@
+{
+  "continuationContents": {
+    "liveChatContinuation": {
+      "continuations": [
+        {
+          "invalidationContinuationData": {
+            "timeoutMs": 10000,
+            "continuation": "next-continuation"
+          }
+        }
+      ],
+      "actions": [
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatTextMessageRenderer": {
+                "message": {
+                  "runs": [
+                    {
+                      "text": "hello "
+                    },
+                    {
+                      "text": "wow"
+                    },
+                    {
+                      "emoji": {
+                        "emojiId": "❤",
+                        "shortcuts": [
+                          ":red_heart:",
+                          ":heart:",
+                          "<3"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://fonts.gstatic.com/s/e/notoemoji/15.1/2764/72.png"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "emoji": {
+                        "emojiId": "❌",
+                        "shortcuts": [
+                          ":cross_mark:",
+                          ":x:"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://fonts.gstatic.com/s/e/notoemoji/15.1/274c/72.png"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "emoji": {
+                        "emojiId": "UCkszU2WH9gy1mb0dV-11UJg/G8AfY6yWGuKuhL0PlbiA2AE",
+                        "shortcuts": [
+                          ":hand-pink-waving:"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://yt3.ggpht.com/KOxdr_z3A5h1Gb7kqnxqOCnbZrBmxI2B_tRQ453BhTWUhYAlpg5ZP8IKEBkcvRoY8grY91Q=w24-h24-c-k-nd",
+                              "width": 24,
+                              "height": 24
+                            },
+                            {
+                              "url": "https://yt3.ggpht.com/KOxdr_z3A5h1Gb7kqnxqOCnbZrBmxI2B_tRQ453BhTWUhYAlpg5ZP8IKEBkcvRoY8grY91Q=w48-h48-c-k-nd",
+                              "width": 48,
+                              "height": 48
+                            }
+                          ]
+                        },
+                        "isCustomEmoji": true
+                      }
+                    }
+                  ]
+                },
+                "authorName": {
+                  "simpleText": "@viewer"
+                },
+                "id": "ChwKGkNPWGYxS1hUOTVjREZmM0dQd1FkSzlVNDRB",
+                "timestampUsec": "1794116098020631",
+                "authorExternalChannelId": "UCviewerxxxxxxxxxxxxxxxx"
+              }
+            }
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatTextMessageRenderer": {
+                "message": {
+                  "runs": [
+                    {
+                      "text": "first time here"
+                    }
+                  ]
+                },
+                "authorName": {
+                  "simpleText": "@member"
+                },
+                "id": "ChwKGkNLeWkzdlRVOTVjREZab19yUVlkeDJrTUF3",
+                "timestampUsec": "1794116532279205",
+                "authorBadges": [
+                  {
+                    "liveChatAuthorBadgeRenderer": {
+                      "customThumbnail": {
+                        "thumbnails": [
+                          {
+                            "url": "https://yt3.ggpht.com/A4R5j7sscJWTU0NwxoUSBQm4hcVfH7De8jrukuQ_05ITM-lNx5ENqR8zm7LFQXjkmiKj7pF85iBIfklyOg=s16-c-k",
+                            "width": 16,
+                            "height": 16
+                          },
+                          {
+                            "url": "https://yt3.ggpht.com/A4R5j7sscJWTU0NwxoUSBQm4hcVfH7De8jrukuQ_05ITM-lNx5ENqR8zm7LFQXjkmiKj7pF85iBIfklyOg=s32-c-k",
+                            "width": 32,
+                            "height": 32
+                          }
+                        ]
+                      },
+                      "tooltip": "Member (1 month)"
+                    }
+                  }
+                ],
+                "authorExternalChannelId": "UCmemberxxxxxxxxxxxxxxxx"
+              }
+            }
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatTextMessageRenderer": {
+                "message": {
+                  "runs": [
+                    {
+                      "emoji": {
+                        "emojiId": "UCkszU2WH9gy1mb0dV-11UJg/KsIfY6LzFoLM6AKanYDQAg",
+                        "shortcuts": [
+                          ":face-blue-smiling:"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w24-h24-c-k-nd",
+                              "width": 24,
+                              "height": 24
+                            },
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w48-h48-c-k-nd",
+                              "width": 48,
+                              "height": 48
+                            }
+                          ]
+                        },
+                        "isCustomEmoji": true
+                      }
+                    },
+                    {
+                      "emoji": {
+                        "emojiId": "UCkszU2WH9gy1mb0dV-11UJg/KsIfY6LzFoLM6AKanYDQAg",
+                        "shortcuts": [
+                          ":face-blue-smiling:"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w24-h24-c-k-nd",
+                              "width": 24,
+                              "height": 24
+                            },
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w48-h48-c-k-nd",
+                              "width": 48,
+                              "height": 48
+                            }
+                          ]
+                        },
+                        "isCustomEmoji": true
+                      }
+                    },
+                    {
+                      "emoji": {
+                        "emojiId": "UCkszU2WH9gy1mb0dV-11UJg/KsIfY6LzFoLM6AKanYDQAg",
+                        "shortcuts": [
+                          ":face-blue-smiling:"
+                        ],
+                        "image": {
+                          "thumbnails": [
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w24-h24-c-k-nd",
+                              "width": 24,
+                              "height": 24
+                            },
+                            {
+                              "url": "https://yt3.ggpht.com/cktIaPxFwnrPwn-alHvnvedHLUJwbHi8HCK3AgbHpphrMAW99qw0bDfxuZagSY5ieE9BBrA=w48-h48-c-k-nd",
+                              "width": 48,
+                              "height": 48
+                            }
+                          ]
+                        },
+                        "isCustomEmoji": true
+                      }
+                    }
+                  ]
+                },
+                "authorName": {
+                  "simpleText": "@moder"
+                },
+                "id": "ChwKGkNPSDJndXJWOTVjREZmZlc1d01kek44elBn",
+                "timestampUsec": "1794116778252890",
+                "authorBadges": [
+                  {
+                    "liveChatAuthorBadgeRenderer": {
+                      "icon": {
+                        "iconType": "MODERATOR"
+                      },
+                      "tooltip": "Moderator"
+                    }
+                  }
+                ],
+                "authorExternalChannelId": "UCmoderxxxxxxxxxxxxxxxxx"
+              }
+            }
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatTextMessageRenderer": {
+                "message": {
+                  "runs": [
+                    {
+                      "text": "thanks for watching"
+                    }
+                  ]
+                },
+                "authorName": {
+                  "simpleText": "@owner"
+                },
+                "id": "ChwKGkNOSHYwdWJYOTVjREZaX0p3Z1FkY3Z3UXdR",
+                "timestampUsec": "1794117308045825",
+                "authorBadges": [
+                  {
+                    "liveChatAuthorBadgeRenderer": {
+                      "icon": {
+                        "iconType": "VERIFIED"
+                      },
+                      "tooltip": "Verified"
+                    }
+                  },
+                  {
+                    "liveChatAuthorBadgeRenderer": {
+                      "icon": {
+                        "iconType": "OWNER"
+                      },
+                      "tooltip": "Owner"
+                    }
+                  }
+                ],
+                "authorExternalChannelId": "UCownerxxxxxxxxxxxxxxxxx"
+              }
+            }
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatTextMessageRenderer": {
+                "message": {
+                  "runs": [
+                    {
+                      "text": "gg"
+                    }
+                  ]
+                },
+                "authorName": {
+                  "simpleText": "@verified"
+                },
+                "id": "ChwKGkNMQ25tZV9XOTVjREZXaDdUQWdkRmY4dzln",
+                "timestampUsec": "1794117057540160",
+                "authorBadges": [
+                  {
+                    "liveChatAuthorBadgeRenderer": {
+                      "icon": {
+                        "iconType": "VERIFIED"
+                      },
+                      "tooltip": "Verified"
+                    }
+                  }
+                ],
+                "authorExternalChannelId": "UCverifiedxxxxxxxxxxxxxx"
+              }
+            }
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "liveChatPlaceholderItemRenderer": {
+                "id": "ChwKGkNKSzRzNUhXOTVjREZZUGF3Z1FkaXNRM3pR",
+                "timestampUsec": "1794116860834856"
+              }
+            },
+            "clientId": "CJK4s5HW95cDFYPawgQdisQ3zQ"
+          }
+        },
+        {
+          "addChatItemAction": {
+            "item": {
+              "giftMessageViewModel": {
+                "text": {
+                  "content": "sent Go team!",
+                  "styleRuns": [
+                    {
+                      "startIndex": 0,
+                      "length": 13
+                    }
+                  ]
+                },
+                "authorName": {
+                  "content": "@gifter "
+                },
+                "id": "ChwKGkNQaS0wcTNBOTVjREZUeGZFZ0VkMTVFY0Vn",
+                "giftImage": {
+                  "sources": [
+                    {
+                      "url": "//www.gstatic.com/youtube/img/pdg/gift/assets/go_team.png=w480-h480",
+                      "width": 480,
+                      "height": 480
+                    },
+                    {
+                      "url": "//www.gstatic.com/youtube/img/pdg/gift/assets/go_team.png=w640-h640",
+                      "width": 640,
+                      "height": 640
+                    }
+                  ]
+                },
+                "giftImageA11yLabel": "@N14HTF1R3 sent a gift, Go team!"
+              }
+            },
+            "clientId": "CPi-0q3A95cDFTxfEgEd15EcEg"
+          }
+        },
+        {
+          "removeChatItemAction": {
+            "targetItemId": "ChwKGkNLeWkzdlRVOTVjREZab19yUVlkeDJrTUF3"
+          }
+        },
+        {
+          "removeChatItemByAuthorAction": {
+            "externalChannelId": "UCverifiedxxxxxxxxxxxxxx"
+          }
+        }
+      ]
+    }
+  }
+}

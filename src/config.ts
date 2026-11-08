@@ -51,3 +51,12 @@ export const CHANNEL_INACTIVITY_TIMEOUT_MINUTES =
 
 export const CORS_HOSTS = getEnv('CORS_HOSTS')?.split(',') ||
   ['http://localhost:5173', 'https://mapcar.alwaysdata.net']
+
+// Set on the server that cannot reach YouTube: it then follows the chats read by
+// another copy of this server abroad instead of reading YouTube itself (YOUTUBE_NODE.md)
+export const YOUTUBE_NODE_URL = getEnv('YOUTUBE_NODE_URL') || ''
+// API_TOKEN of that node, if it has one
+export const YOUTUBE_NODE_TOKEN = getEnv('YOUTUBE_NODE_TOKEN') || ''
+
+// When set, the API (except /api/status, used by the healthcheck) wants "Authorization: Bearer <token>"
+export const API_TOKEN = getEnv('API_TOKEN') || ''

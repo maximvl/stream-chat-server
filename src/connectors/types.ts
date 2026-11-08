@@ -121,6 +121,22 @@ export type GoodgameUserFields = {
   subscriber: boolean
 }
 
+export type YoutubeBadge = {
+  title: string
+  imageUrl: string
+}
+
+export type YoutubeUserFields = {
+  // YouTube's name color of the role (owner, moderator, member), empty for others
+  color: string
+  isOwner: boolean
+  isModerator: boolean
+  isMember: boolean
+  isVerified: boolean
+  // Membership badges with the channel's pictures; owner, moderator and verified are plain icons
+  badges: YoutubeBadge[]
+}
+
 export type VkUserFields = {
   nickColor: number
   color?: string
@@ -138,6 +154,8 @@ export type ChatUser = {
   vkFields?: VkUserFields
   wtvFields?: WtvUserFields
   goodgameFields?: GoodgameUserFields
+  // ChatUser.id is the author's YouTube channel id (UC…)
+  youtubeFields?: YoutubeUserFields
 }
 
 export interface TokenManager {

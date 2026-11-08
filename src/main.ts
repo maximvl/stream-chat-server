@@ -6,12 +6,16 @@ import {
   LogLevel,
   WEBSERVER_HOST,
   WEBSERVER_PORT,
+  YOUTUBE_NODE_TOKEN,
+  YOUTUBE_NODE_URL,
 } from './config.ts'
 import { TwitchConnector } from './connectors/twitch/twitch_ws.ts'
 import { VkVideoConnector } from './connectors/vkvideo/vkvideo_ws.ts'
 import { KickConnector } from './connectors/kick/kick_ws.ts'
 import { WtvConnector } from './connectors/wtv/wtv_ws.ts'
 import { GoodgameConnector } from './connectors/goodgame/goodgame_ws.ts'
+import { YoutubeConnector } from './connectors/youtube/youtube_chat.ts'
+import { YoutubeRemoteConnector } from './connectors/youtube/youtube_remote.ts'
 import { ChatConnector } from './connectors/types.ts'
 
 // One failing connector must neither stop the loop nor crash the process
@@ -47,6 +51,14 @@ if (import.meta.main) {
   }
   if (!DISABLED_CONNECTORS.includes('goodgame')) {
     AppState.connectors.set('goodgame', new GoodgameConnector())
+  }
+  if (!DISABLED_CONNECTORS.includes('youtube')) {
+    AppState.connectors.set(
+      'youtube',
+      YOUTUBE_NODE_URL
+        ? new YoutubeRemoteConnector(YOUTUBE_NODE_URL, YOUTUBE_NODE_TOKEN)
+        : new YoutubeConnector(),
+    )
   }
 
   connectorLoop('cleanup', 1000 * 60 * 5, (c) => c.cleanup())
