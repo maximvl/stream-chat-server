@@ -58,3 +58,40 @@ Deno.test('vk smiles stay in the text and are listed as emotes', () => {
     imageUrl: 'https://x/large.png',
   }])
 })
+
+Deno.test('vk mentions stay in the text', () => {
+  const c = connector()
+  c.handleMessage({
+    data: JSON.stringify({
+      push: {
+        channel: 'channel-chat:1',
+        pub: {
+          data: {
+            type: 'message',
+            data: {
+              id: 8,
+              createdAt: 1,
+              author: {
+                id: 5,
+                displayName: 'bob',
+                nickColor: 2,
+                isChatModerator: false,
+                isChannelModerator: false,
+                roles: [],
+                badges: [],
+              },
+              data: [
+                { type: 'mention', id: 9, displayName: 'alice', nickColor: 1 },
+                { type: 'text', content: '["слишком чистый для ада"]' },
+              ],
+            },
+          },
+        },
+      },
+    }),
+  } as MessageEvent)
+
+  const [msg] = c.getMessages('chan', 0)
+  assertEquals(msg.text, '@alice слишком чистый для ада')
+  assertEquals(msg.vkFields?.mentions, [{ id: 9, displayName: 'alice' }])
+})

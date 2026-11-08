@@ -230,6 +230,8 @@ export class VkVideoConnector implements ChatConnector {
             id: content.id,
             displayName: content.displayName,
           })
+          // VK sends the mentioned nick only as this part, so put it back into the text
+          messageParts.push(`@${content.displayName}`)
           break
         case 'text':
           try {
