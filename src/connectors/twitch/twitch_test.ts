@@ -10,6 +10,7 @@ function connector(): TwitchConnector {
     server: 'twitch',
     reverseChannelsMap: new Map([['#chan', 'chan']]),
     messages: new Map(),
+    roomModes: new Map(),
     usersById: new Map(),
     globalBadges: new Map(),
     badgesByChannel: new Map(),
@@ -63,8 +64,8 @@ Deno.test('twitch notifies subscribers about moderated messages', () => {
   c.handleMessage(frame(
     '@ban-duration=60;target-user-id=2 :tmi.twitch.tv CLEARCHAT #chan :bob',
   ))
-  // History served to pollers is untouched
-  assertEquals(c.getMessages('chan', 0).length, 3)
+  // History served to pollers keeps the messages and gains the timeout notice
+  assertEquals(c.getMessages('chan', 0).length, 4)
 
   c.handleMessage(frame('@room-id=9 :tmi.twitch.tv CLEARCHAT #chan'))
   unsubscribe()
@@ -75,7 +76,9 @@ Deno.test('twitch notifies subscribers about moderated messages', () => {
     'message',
     'delete',
     'delete',
+    'message',
     'clear',
+    'message',
   ])
   assertEquals(events[3], { type: 'delete', messageIds: ['m1'] as MessageId[] })
   assertEquals(events[4], {
@@ -238,4 +241,73 @@ Deno.test('twitch retries a failed badge fetch, at most once a minute', async ()
   c.badgesRetryAt.clear()
   c.parseBadges('chan' as ChannelName, '')
   assertEquals(asked.filter((a) => a === 'chan').length, 2)
+})
+
+Deno.test('twitch turns USERNOTICE into notices, with or without the user message', () => {
+  const c = connector()
+  c.handleMessage(frame(
+    '@display-name=Bob;id=n1;login=bob;msg-id=resub;msg-param-cumulative-months=12;msg-param-sub-plan=1000;msg-param-sub-plan-name=Channel\\sSub;system-msg=bob\\ssubscribed;tmi-sent-ts=5;user-id=7 :tmi.twitch.tv USERNOTICE #chan :love it',
+  ))
+  c.handleMessage(frame(
+    '@display-name=Ann;id=n2;login=ann;msg-id=viewermilestone;msg-param-category=watch-streak;msg-param-value=3;tmi-sent-ts=6;user-id=8 :tmi.twitch.tv USERNOTICE #chan',
+  ))
+  const [resub, streak] = c.getMessages('chan', 0)
+  assertEquals(resub.user.id, 'bob')
+  assertEquals(resub.text, 'love it')
+  assertEquals(resub.notice, {
+    kind: 'resub',
+    params: {
+      'cumulative-months': '12',
+      'sub-plan': '1000',
+      'sub-plan-name': 'Channel Sub',
+    },
+    systemText: 'bob subscribed',
+  })
+  assertEquals(streak.text, '')
+  assertEquals(streak.notice?.kind, 'viewermilestone')
+  assertEquals(streak.notice?.params.value, '3')
+})
+
+Deno.test('twitch keeps the summary of a mass gift and drops Shared Chat copies of other channels', () => {
+  const c = connector()
+  c.handleMessage(frame(
+    '@id=g0;login=bob;msg-id=submysterygift;msg-param-mass-gift-count=2 :tmi.twitch.tv USERNOTICE #chan',
+  ))
+  c.handleMessage(frame(
+    '@id=g1;login=bob;msg-id=subgift;msg-param-community-gift-id=x;msg-param-recipient-display-name=A :tmi.twitch.tv USERNOTICE #chan',
+  ))
+  c.handleMessage(frame(
+    '@id=g2;login=bob;msg-id=subgift;msg-param-recipient-display-name=B :tmi.twitch.tv USERNOTICE #chan',
+  ))
+  c.handleMessage(frame(
+    '@id=s1;login=eve;msg-id=sharedchatnotice;source-msg-id=raid;msg-param-viewerCount=5 :tmi.twitch.tv USERNOTICE #chan',
+  ))
+  const notices = c.getMessages('chan', 0).map((m) => m.notice)
+  assertEquals(notices.map((n) => n?.kind), ['submysterygift', 'subgift'])
+})
+
+Deno.test('twitch reports bans and room mode changes, not the modes on join', () => {
+  const c = connector()
+  c.handleMessage(frame(
+    '@emote-only=0;followers-only=-1;r9k=0;room-id=1;slow=0;subs-only=0 :tmi.twitch.tv ROOMSTATE #chan',
+  ))
+  c.handleMessage(frame('@room-id=1;slow=10 :tmi.twitch.tv ROOMSTATE #chan'))
+  // A rejoin repeats the snapshot: nothing new
+  c.handleMessage(frame(
+    '@emote-only=0;followers-only=-1;r9k=0;room-id=1;slow=10;subs-only=0 :tmi.twitch.tv ROOMSTATE #chan',
+  ))
+  c.handleMessage(frame(
+    '@room-id=1;target-user-id=2;tmi-sent-ts=9 :tmi.twitch.tv CLEARCHAT #chan :bob',
+  ))
+  const messages = c.getMessages('chan', 0)
+  assertEquals(messages.map((m) => m.notice), [
+    {
+      kind: 'roomstate',
+      params: { mode: 'slow', value: '10' },
+      systemText: '',
+    },
+    { kind: 'ban', params: {}, systemText: '' },
+  ])
+  assertEquals(messages[1].user.id, 'bob')
+  assertEquals(messages[1].timestampMs, 9)
 })

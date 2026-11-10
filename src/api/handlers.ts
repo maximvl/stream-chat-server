@@ -6,7 +6,7 @@ import {
   MAX_LAST_MESSAGES_LIMIT,
   MAX_MESSAGES_RESPONSE,
 } from '../config.ts'
-import { ChannelName } from '../connectors/types.ts'
+import { ChannelName, ChatMessage } from '../connectors/types.ts'
 import { subscribe } from '../connectors/chatEvents.ts'
 import { normalizeChannel, toChatId } from '../connectors/utils.ts'
 import {
@@ -100,6 +100,13 @@ const routes: Record<
 
 const STREAM_KEEPALIVE_MS = 20_000
 
+// Twitch system notices (subs, raids, timeouts...) are opt-in with notices=1: older clients expect chat lines only
+function noticeFilter(url: URL): (message: ChatMessage) => boolean {
+  return url.searchParams.get('notices') === '1'
+    ? () => true
+    : (message) => !message.notice
+}
+
 // Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear'} events of one chat
 function chat_stream(req: Request): Promise<Response> {
   const url = new URL(req.url)
@@ -128,6 +135,7 @@ function chat_stream(req: Request): Promise<Response> {
 
   const channel = normalizeChannel(params.channel)
   const encoder = new TextEncoder()
+  const keep = noticeFilter(url)
   let cleanup = () => {}
 
   const body = new ReadableStream<Uint8Array>({
@@ -141,7 +149,10 @@ function chat_stream(req: Request): Promise<Response> {
       }
       const unsubscribe = subscribe(
         toChatId(params.server, channel),
-        (event) => send(`data: ${JSON.stringify(event)}\n\n`),
+        (event) => {
+          if (event.type === 'message' && !keep(event.message)) return
+          send(`data: ${JSON.stringify(event)}\n\n`)
+        },
       )
       // (Re)joins the channel if its socket dropped and marks it as read so
       // the inactivity cleanup doesn't disconnect a chat that is on screen.
@@ -256,7 +267,10 @@ function chat_messages(req: Request): Promise<Response> {
     params.tsFrom,
   )
 
-  const limited = messages.slice(0, MAX_MESSAGES_RESPONSE)
+  const limited = messages.filter(noticeFilter(url)).slice(
+    0,
+    MAX_MESSAGES_RESPONSE,
+  )
 
   return Promise.resolve(
     Response.json({
@@ -303,7 +317,7 @@ function chat_last_messages(req: Request): Promise<Response> {
   const messages = connector.getLastMessages(
     params.channel as ChannelName,
     limit,
-  )
+  ).filter(noticeFilter(url))
 
   return Promise.resolve(
     Response.json({

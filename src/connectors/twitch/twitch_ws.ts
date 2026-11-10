@@ -12,6 +12,7 @@ import {
   ChatConnector,
   ChatEmote,
   ChatMessage,
+  ChatNotice,
   ChatServer,
   ChatUser,
   ConnectorStatus,
@@ -32,6 +33,13 @@ import {
 const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 const BADGE_RETRY_MS = 60_000
 const GIANT_REWARDS_RETRY_MS = 60_000
+const ROOM_MODES = ['emote-only', 'followers-only', 'r9k', 'slow', 'subs-only']
+
+// IRCv3 tag value escapes: \s space, \: semicolon, \\ backslash, \r \n
+function unescapeTag(value: string): string {
+  const escapes: Record<string, string> = { s: ' ', ':': ';', r: '\r', n: '\n' }
+  return value.replace(/\\(.)/g, (_, c: string) => escapes[c] ?? c)
+}
 
 // Cheermote prefix (lower case) -> tiers sorted by min_bits
 type CheerTier = { minBits: number; color: string; imageUrl: string }
@@ -82,6 +90,8 @@ export class TwitchConnector implements ChatConnector {
   giantRewardsRetryAt: Map<ChannelName, number> = new Map()
 
   messages: Map<ChannelName, MessageStorage> = new Map()
+  // Last known ROOMSTATE of each channel, to tell mode changes from the snapshot on join
+  roomModes: Map<ChannelName, Map<string, string>> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
 
   channelStatus: Map<ChannelName, ChannelStatus> = new Map()
@@ -275,19 +285,75 @@ export class TwitchConnector implements ChatConnector {
         this.websocketSend('PONG :tmi.twitch.tv')
         continue
       }
-      if (this.handleModeration(trimmed)) {
+      if (this.handleModeration(trimmed) || this.handleRoomState(trimmed)) {
         continue
       }
       const msg = this.parseMessage(trimmed)
       if (msg) {
-        let storage = this.messages.get(msg.channel)
-        if (!storage) {
-          storage = new MessageStorage()
-          this.messages.set(msg.channel, storage)
-        }
-        storage.addMessage(msg)
+        this.storageFor(msg.channel).addMessage(msg)
       }
     }
+  }
+
+  storageFor(channel: ChannelName): MessageStorage {
+    let storage = this.messages.get(channel)
+    if (!storage) {
+      storage = new MessageStorage()
+      this.messages.set(channel, storage)
+    }
+    return storage
+  }
+
+  // A system line Twitch sends no message for: timeouts, bans, chat clears, mode changes
+  addNotice(
+    channel: ChannelName,
+    login: string,
+    notice: ChatNotice,
+    timestampMs = Temporal.Now.instant().epochMilliseconds,
+  ) {
+    this.storageFor(channel).addMessage({
+      id: crypto.randomUUID() as MessageId,
+      timestampMs,
+      user: { id: login as UserId, displayName: login },
+      server: 'twitch',
+      channel,
+      text: '',
+      notice,
+    })
+  }
+
+  // ROOMSTATE carries every mode on join and only the changed one after;
+  // a mode becomes a notice when it differs from what we already knew
+  handleRoomState(msg: string): boolean {
+    const parts = msg.split(' ')
+    if (parts[2] !== 'ROOMSTATE') {
+      return false
+    }
+    const channel = this.reverseChannelsMap.get(
+      parts[3]?.toLowerCase() as InternalChannelId,
+    )
+    if (!channel) {
+      return true
+    }
+    const attrs = this.parseAttrs(parts[0])
+    const known = this.roomModes.get(channel)
+    const modes = known ?? new Map<string, string>()
+    this.roomModes.set(channel, modes)
+    for (const mode of ROOM_MODES) {
+      const value = attrs[mode]
+      if (value === undefined || modes.get(mode) === value) {
+        continue
+      }
+      if (known) {
+        this.addNotice(channel, '', {
+          kind: 'roomstate',
+          params: { mode, value },
+          systemText: '',
+        })
+      }
+      modes.set(mode, value)
+    }
+    return true
   }
 
   // CLEARMSG: one message deleted; CLEARCHAT: user banned/timed out, or whole chat cleared.
@@ -307,6 +373,9 @@ export class TwitchConnector implements ChatConnector {
     const attrs = this.parseAttrs(parts[0])
     const storage = this.messages.get(channel)
     const chatId = toChatId(this.server, channel)
+    const timestampMs = attrs['tmi-sent-ts']
+      ? Number(attrs['tmi-sent-ts'])
+      : undefined
 
     if (command === 'CLEARMSG') {
       const messageId = attrs['target-msg-id'] as MessageId | undefined
@@ -321,8 +390,21 @@ export class TwitchConnector implements ChatConnector {
       if (messageIds.length) {
         emit(chatId, { type: 'delete', messageIds })
       }
+      // Timeout when ban-duration (seconds) is there, permanent ban otherwise; the login is the trailing param
+      const duration = attrs['ban-duration']
+      this.addNotice(channel, parts[4]?.slice(1) ?? '', {
+        kind: duration ? 'timeout' : 'ban',
+        params: duration ? { duration } : {},
+        systemText: '',
+      }, timestampMs)
     } else {
       emit(chatId, { type: 'clear' })
+      this.addNotice(
+        channel,
+        '',
+        { kind: 'clear', params: {}, systemText: '' },
+        timestampMs,
+      )
     }
     return true
   }
@@ -456,10 +538,14 @@ export class TwitchConnector implements ChatConnector {
       return null
     }
 
-    const privMsgIndex = parts.indexOf('PRIVMSG')
-    if (privMsgIndex === -1) {
+    // USERNOTICE: subs, gifts, raids, watch streaks...; the user's own message is optional
+    const commandIndex = [1, 2].find((i) =>
+      parts[i] === 'PRIVMSG' || parts[i] === 'USERNOTICE'
+    )
+    if (commandIndex === undefined) {
       return null
     }
+    const isNotice = parts[commandIndex] === 'USERNOTICE'
 
     const rawMsg: RawMsg = {
       userPart: null,
@@ -468,18 +554,21 @@ export class TwitchConnector implements ChatConnector {
       channelPart: null,
     }
 
-    if (privMsgIndex === 1) {
+    if (commandIndex === 1) {
       rawMsg.userPart = parts[0]
       rawMsg.channelPart = parts[2].toLowerCase()
       rawMsg.message = parts.slice(3).join(' ')
-    } else if (privMsgIndex === 2) {
+    } else {
       rawMsg.attrsPart = parts[0]
       rawMsg.userPart = parts[1]
       rawMsg.channelPart = parts[3].toLowerCase()
       rawMsg.message = parts.slice(4).join(' ')
     }
 
-    if (!rawMsg.userPart || !rawMsg.channelPart || !rawMsg.message) {
+    if (
+      !rawMsg.userPart || !rawMsg.channelPart || rawMsg.message === null ||
+      (!isNotice && !rawMsg.message)
+    ) {
       this.log(
         LogLevel.DEBUG,
         `Failed to parse PRIVMSG: missing parts raw: ${msg}`,
@@ -500,7 +589,25 @@ export class TwitchConnector implements ChatConnector {
     delete attrs['badges']
     const badges = this.parseBadges(channel, badgeStr)
 
-    const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
+    // USERNOTICE comes from :tmi.twitch.tv; the user is in the login tag
+    const username =
+      (isNotice
+        ? attrs['login'] ?? ''
+        : rawMsg.userPart.split('!')[0].slice(1)) as UserId
+
+    const noticeKind = attrs['msg-id'] ?? ''
+    // Shared Chat copies of other channels' subs, raids... are not about this channel
+    if (isNotice && noticeKind === 'sharedchatnotice') {
+      return null
+    }
+    // A mass gift sends its summary (submysterygift), then one subgift per recipient; those are left out.
+    // msg-param-community-gift-id is not in the docs, but Twitch sends it on exactly these subgifts
+    if (
+      isNotice && noticeKind === 'subgift' &&
+      attrs['msg-param-community-gift-id']
+    ) {
+      return null
+    }
 
     // A reward we don't know: created or renamed to FFZ:GE after the join, or the first fetch failed
     const rewardId = attrs['custom-reward-id']
@@ -555,6 +662,19 @@ export class TwitchConnector implements ChatConnector {
         ...this.parseCheers(channel, attrs['bits'], text),
       ],
     }
+    if (isNotice) {
+      const params: Record<string, string> = {}
+      for (const [key, value] of Object.entries(attrs)) {
+        if (key.startsWith('msg-param-')) {
+          params[key.slice('msg-param-'.length)] = unescapeTag(value)
+        }
+      }
+      message.notice = {
+        kind: noticeKind,
+        params,
+        systemText: unescapeTag(attrs['system-msg'] ?? ''),
+      }
+    }
     if (message.text.trim()) {
       this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(message)}`)
     }
@@ -582,16 +702,19 @@ export class TwitchConnector implements ChatConnector {
       'turbo',
       'msg-id',
       'first-msg',
+      'login',
+      'system-msg',
+      'ban-duration',
+      ...ROOM_MODES,
     ])
-    const filered = parts.filter((p) => keys.has(p.split('=')[0]))
-
     const attrs: Record<string, string> = {}
-    for (const badge of filered) {
-      const split = badge.split('=')
-      if (split.length !== 2) {
-        continue
+    for (const part of parts) {
+      // Split at the first "=" only: system-msg and plan names may contain more
+      const eq = part.indexOf('=')
+      const key = part.slice(0, eq)
+      if (eq > 0 && (keys.has(key) || key.startsWith('msg-param-'))) {
+        attrs[key] = part.slice(eq + 1)
       }
-      attrs[split[0]] = split[1]
     }
 
     return attrs

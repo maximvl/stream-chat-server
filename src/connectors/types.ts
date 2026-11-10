@@ -69,6 +69,17 @@ export type ChatMessage = {
   channel: ChannelName
   emotes?: ChatEmote[]
   vkFields?: VkMessageFields
+  // Twitch system event; returned only to clients that ask for notices=1
+  notice?: ChatNotice
+}
+
+// kind: USERNOTICE msg-id (sub, raid, viewermilestone...), or timeout | ban | clear | roomstate.
+// params: the msg-param-* tags without the prefix (roomstate: mode, value; timeout: duration).
+// systemText: Twitch's own English text for the notice, if any.
+export type ChatNotice = {
+  kind: string
+  params: Record<string, string>
+  systemText: string
 }
 
 export type TwitchBadge = {
