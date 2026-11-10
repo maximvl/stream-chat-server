@@ -30,6 +30,7 @@ import {
 
 // Client id of twitch.tv itself; its public GQL answers channel info without user auth
 const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+const BADGE_RETRY_MS = 60_000
 
 // Cheermote prefix (lower case) -> tiers sorted by min_bits
 type CheerTier = { minBits: number; color: string; imageUrl: string }
@@ -71,6 +72,8 @@ export class TwitchConnector implements ChatConnector {
   globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
   badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
     new Map()
+  // When each failed badge fetch may be retried; '' is the global set
+  badgesRetryAt: Map<string, number> = new Map()
   cheermotesByChannel: Map<ChannelName, Cheermotes> = new Map()
   // Channel points rewards whose title or prompt carries FFZ:GE (FrankerFaceZ giant emote convention)
   giantRewardsByChannel: Map<ChannelName, Set<string>> = new Map()
@@ -86,7 +89,7 @@ export class TwitchConnector implements ChatConnector {
 
   constructor() {
     this.fetch_badges().then((badges) => {
-      this.globalBadges = badges
+      if (badges) this.globalBadges = badges
     }).catch((error) => {
       this.log(LogLevel.DEBUG, `Failed to fetch global badges: ${error}`)
     })
@@ -136,7 +139,7 @@ export class TwitchConnector implements ChatConnector {
     // the 'connecting' state.
     try {
       const channelBadges = await this.fetch_badges(channel)
-      this.badgesByChannel.set(channel, channelBadges)
+      if (channelBadges) this.badgesByChannel.set(channel, channelBadges)
       this.fetch_giant_rewards(channel)
         .then((rewards) => this.giantRewardsByChannel.set(channel, rewards))
         .catch((error) =>
@@ -589,7 +592,29 @@ export class TwitchConnector implements ChatConnector {
     return attrs
   }
 
+  // A badge fetch that failed (Helix hiccup, expired token) is retried at most once a minute;
+  // a channel without badges of its own has an empty set and is not asked again
+  retryMissingBadges(channel: ChannelName) {
+    const missing: (ChannelName | undefined)[] = []
+    if (!this.globalBadges.size) missing.push(undefined)
+    if (!this.badgesByChannel.has(channel)) missing.push(channel)
+    const now = Date.now()
+    for (const target of missing) {
+      const key = target ?? ''
+      if ((this.badgesRetryAt.get(key) ?? 0) > now) continue
+      this.badgesRetryAt.set(key, now + BADGE_RETRY_MS)
+      this.fetch_badges(target).then((badges) => {
+        if (!badges) return
+        if (target) this.badgesByChannel.set(target, badges)
+        else this.globalBadges = badges
+      }).catch((error) =>
+        this.log(LogLevel.DEBUG, `Badge retry for ${key} failed: ${error}`)
+      )
+    }
+  }
+
   parseBadges(channel: ChannelName, badgeValue: string): TwitchBadge[] {
+    this.retryMissingBadges(channel)
     const parts = badgeValue.split(',')
     const result: TwitchBadge[] = []
     for (const badge of parts) {
@@ -643,7 +668,10 @@ export class TwitchConnector implements ChatConnector {
     return id
   }
 
-  async fetch_badges(channel?: ChannelName) {
+  // null when Twitch did not answer, so the caller can try again later
+  async fetch_badges(
+    channel?: ChannelName,
+  ): Promise<Map<string, Map<string, BadgeVersion>> | null> {
     const broadcasterId = channel
       ? await this.fetch_broadcaster_id(channel)
       : undefined
@@ -665,7 +693,7 @@ export class TwitchConnector implements ChatConnector {
         response.status,
         response.statusText,
       )
-      return new Map()
+      return null
     }
 
     const data = await response.json()
@@ -676,7 +704,7 @@ export class TwitchConnector implements ChatConnector {
         LogLevel.DEBUG,
         'Failed to parse badges response:' + badgesResponse.issues,
       )
-      return new Map()
+      return null
     }
     const badgesDict: Map<string, Map<string, BadgeVersion>> = new Map()
     for (const badge of badgesResponse.data) {
@@ -752,13 +780,10 @@ export class TwitchConnector implements ChatConnector {
     setId: string
     versionId: string
   }): BadgeVersion | undefined {
-    const set = this.globalBadges.get(params.setId)
-    if (set) {
-      return set.get(params.versionId)
-    }
+    // The channel's own subscriber and bits badges replace Twitch's default ones
     return this.badgesByChannel.get(params.channel)?.get(params.setId)?.get(
       params.versionId,
-    )
+    ) ?? this.globalBadges.get(params.setId)?.get(params.versionId)
   }
 
   cleanup(): void {

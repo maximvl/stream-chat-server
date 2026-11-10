@@ -13,8 +13,11 @@ function connector(): TwitchConnector {
     usersById: new Map(),
     globalBadges: new Map(),
     badgesByChannel: new Map(),
+    badgesRetryAt: new Map(),
     cheermotesByChannel: new Map(),
     giantRewardsByChannel: new Map([['chan', new Set(['ge-reward'])]]),
+    // No Helix in tests: a badge fetch "fails" unless a test stubs it
+    fetch_badges: () => Promise.resolve(null),
   })
 }
 
@@ -152,4 +155,60 @@ Deno.test('twitch marks first messages', () => {
     c.getMessages('chan', 0).map((m) => m.user.twitchFields?.firstMessage),
     [true, false],
   )
+})
+
+Deno.test('twitch prefers the channel badge over the global one of the same set', () => {
+  const c = connector()
+  const version = (id: string, url: string) => ({
+    id,
+    title: url,
+    description: '',
+    image_url_1x: url,
+    image_url_2x: url,
+    image_url_4x: url,
+  })
+  c.globalBadges = new Map([
+    ['subscriber', new Map([['0', version('0', 'star')]])],
+    ['vip', new Map([['1', version('1', 'vip')]])],
+  ])
+  c.badgesByChannel.set(
+    'chan' as ChannelName,
+    new Map([[
+      'subscriber',
+      new Map([
+        ['0', version('0', 'cat')],
+        ['12', version('12', 'fox')],
+      ]),
+    ]]),
+  )
+
+  const urls = (tag: string) =>
+    c.parseBadges('chan' as ChannelName, tag).map((b) => b.imageUrl)
+  assertEquals(urls('subscriber/0,vip/1'), ['cat', 'vip'])
+  assertEquals(urls('subscriber/12'), ['fox'])
+})
+
+Deno.test('twitch retries a failed badge fetch, at most once a minute', async () => {
+  const c = connector()
+  c.badgesByChannel.clear()
+  const asked: (string | undefined)[] = []
+  let answer: Map<string, Map<string, never>> | null = null
+  c.fetch_badges = (channel) => {
+    asked.push(channel)
+    return Promise.resolve(answer)
+  }
+
+  c.parseBadges('chan' as ChannelName, '')
+  c.parseBadges('chan' as ChannelName, '')
+  assertEquals(asked, [undefined, 'chan'])
+
+  c.badgesRetryAt.clear()
+  answer = new Map()
+  c.parseBadges('chan' as ChannelName, '')
+  await Promise.resolve()
+  assertEquals(c.badgesByChannel.has('chan' as ChannelName), true)
+  // An empty set is a real answer: the channel is not asked again
+  c.badgesRetryAt.clear()
+  c.parseBadges('chan' as ChannelName, '')
+  assertEquals(asked.filter((a) => a === 'chan').length, 2)
 })
