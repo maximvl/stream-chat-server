@@ -16,8 +16,10 @@ function connector(): TwitchConnector {
     badgesRetryAt: new Map(),
     cheermotesByChannel: new Map(),
     giantRewardsByChannel: new Map([['chan', new Set(['ge-reward'])]]),
+    giantRewardsRetryAt: new Map(),
     // No Helix in tests: a badge fetch "fails" unless a test stubs it
     fetch_badges: () => Promise.resolve(null),
+    fetch_giant_rewards: () => Promise.resolve(new Set(['ge-reward'])),
   })
 }
 
@@ -140,6 +142,31 @@ Deno.test('twitch marks giant emote messages', () => {
   assertEquals(
     c.getMessages('chan', 0).map((m) => m.user.twitchFields?.giantEmote),
     [true, true, false],
+  )
+})
+
+Deno.test('twitch asks the rewards again for an unknown one, at most once a minute', async () => {
+  const c = connector()
+  let asked = 0
+  c.fetch_giant_rewards = () => {
+    asked++
+    return Promise.resolve(new Set(['ge-reward', 'new-ge']))
+  }
+  const redeem = (id: string, reward: string) =>
+    c.handleMessage(frame(
+      `@custom-reward-id=${reward};id=${id};user-id=1;tmi-sent-ts=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :Kappa`,
+    ))
+
+  redeem('m1', 'ge-reward')
+  assertEquals(asked, 0)
+  redeem('m2', 'new-ge')
+  redeem('m3', 'other')
+  assertEquals(asked, 1)
+  await Promise.resolve()
+  redeem('m4', 'new-ge')
+  assertEquals(
+    c.getMessages('chan', 0).map((m) => m.user.twitchFields?.giantEmote),
+    [true, false, false, true],
   )
 })
 

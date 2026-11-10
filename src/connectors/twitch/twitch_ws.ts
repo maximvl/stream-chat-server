@@ -31,6 +31,7 @@ import {
 // Client id of twitch.tv itself; its public GQL answers channel info without user auth
 const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 const BADGE_RETRY_MS = 60_000
+const GIANT_REWARDS_RETRY_MS = 60_000
 
 // Cheermote prefix (lower case) -> tiers sorted by min_bits
 type CheerTier = { minBits: number; color: string; imageUrl: string }
@@ -77,6 +78,8 @@ export class TwitchConnector implements ChatConnector {
   cheermotesByChannel: Map<ChannelName, Cheermotes> = new Map()
   // Channel points rewards whose title or prompt carries FFZ:GE (FrankerFaceZ giant emote convention)
   giantRewardsByChannel: Map<ChannelName, Set<string>> = new Map()
+  // When each channel's rewards may be asked again
+  giantRewardsRetryAt: Map<ChannelName, number> = new Map()
 
   messages: Map<ChannelName, MessageStorage> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
@@ -137,14 +140,10 @@ export class TwitchConnector implements ChatConnector {
     // Badges are supplementary metadata - if Helix is flaky we still want to
     // join the channel and read messages instead of getting stuck forever in
     // the 'connecting' state.
+    this.refreshGiantRewards(channel)
     try {
       const channelBadges = await this.fetch_badges(channel)
       if (channelBadges) this.badgesByChannel.set(channel, channelBadges)
-      this.fetch_giant_rewards(channel)
-        .then((rewards) => this.giantRewardsByChannel.set(channel, rewards))
-        .catch((error) =>
-          this.log(LogLevel.DEBUG, `Failed to fetch rewards: ${error}`)
-        )
       // Cheer images are as optional as badges: a failure only costs the pictures
       this.fetch_cheermotes(channel)
         .then((cheermotes) => this.cheermotesByChannel.set(channel, cheermotes))
@@ -503,6 +502,12 @@ export class TwitchConnector implements ChatConnector {
 
     const username = rawMsg.userPart.split('!')[0].slice(1) as UserId
 
+    // A reward we don't know: created or renamed to FFZ:GE after the join, or the first fetch failed
+    const rewardId = attrs['custom-reward-id']
+    if (rewardId && !this.giantRewardsByChannel.get(channel)?.has(rewardId)) {
+      this.refreshGiantRewards(channel)
+    }
+
     const twitchFields: TwitchUserFields = {
       userId: attrs['user-id'] ?? '',
       color: attrs['color'] ?? '',
@@ -714,6 +719,18 @@ export class TwitchConnector implements ChatConnector {
       )
     }
     return badgesDict
+  }
+
+  // At most once a minute per channel
+  refreshGiantRewards(channel: ChannelName) {
+    const now = Date.now()
+    if ((this.giantRewardsRetryAt.get(channel) ?? 0) > now) return
+    this.giantRewardsRetryAt.set(channel, now + GIANT_REWARDS_RETRY_MS)
+    this.fetch_giant_rewards(channel)
+      .then((rewards) => this.giantRewardsByChannel.set(channel, rewards))
+      .catch((error) =>
+        this.log(LogLevel.DEBUG, `Failed to fetch rewards: ${error}`)
+      )
   }
 
   // Reward titles aren't in IRC (only custom-reward-id); Twitch's public web GQL lists them without auth
