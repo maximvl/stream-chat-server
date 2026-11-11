@@ -16,11 +16,17 @@ function connector(): TwitchConnector {
     badgesByChannel: new Map(),
     badgesRetryAt: new Map(),
     cheermotesByChannel: new Map(),
-    giantRewardsByChannel: new Map([['chan', new Set(['ge-reward'])]]),
+    rewardsByChannel: new Map([[
+      'chan',
+      new Map([['ge-reward', { title: 'FFZ:GE', giant: true }]]),
+    ]]),
     giantRewardsRetryAt: new Map(),
     // No Helix in tests: a badge fetch "fails" unless a test stubs it
     fetch_badges: () => Promise.resolve(null),
-    fetch_giant_rewards: () => Promise.resolve(new Set(['ge-reward'])),
+    fetch_rewards: () =>
+      Promise.resolve(
+        new Map([['ge-reward', { title: 'FFZ:GE', giant: true }]]),
+      ),
   })
 }
 
@@ -151,9 +157,14 @@ Deno.test('twitch marks giant emote messages', () => {
 Deno.test('twitch asks the rewards again for an unknown one, at most once a minute', async () => {
   const c = connector()
   let asked = 0
-  c.fetch_giant_rewards = () => {
+  c.fetch_rewards = () => {
     asked++
-    return Promise.resolve(new Set(['ge-reward', 'new-ge']))
+    return Promise.resolve(
+      new Map([
+        ['ge-reward', { title: 'FFZ:GE', giant: true }],
+        ['new-ge', { title: 'FFZ:GE new', giant: true }],
+      ]),
+    )
   }
   const redeem = (id: string, reward: string) =>
     c.handleMessage(frame(
@@ -314,4 +325,26 @@ Deno.test('twitch reports bans and room mode changes, not the modes on join', ()
   ])
   assertEquals(messages[1].user.id, 'bob')
   assertEquals(messages[1].timestampMs, 9)
+})
+
+Deno.test('twitch tells which channel points reward a message bought', () => {
+  const c = connector()
+  c.rewardsByChannel.set(
+    'chan' as ChannelName,
+    new Map([['ask', {
+      title: 'Задать вопрос',
+      cost: 500,
+      color: '#9146FF',
+      giant: false,
+    }]]),
+  )
+  c.handleMessage(frame(
+    `@custom-reward-id=ask;id=m1;user-id=1;tmi-sent-ts=1 :bob!bob@bob.tmi.twitch.tv PRIVMSG #chan :как дела`,
+  ))
+  assertEquals(c.getMessages('chan', 0)[0].user.twitchFields?.reward, {
+    id: 'ask',
+    title: 'Задать вопрос',
+    cost: 500,
+    color: '#9146FF',
+  })
 })

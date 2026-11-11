@@ -41,6 +41,13 @@ function unescapeTag(value: string): string {
   return value.replace(/\\(.)/g, (_, c: string) => escapes[c] ?? c)
 }
 
+type ChannelReward = {
+  title: string
+  cost?: number
+  color?: string
+  giant: boolean
+}
+
 // Cheermote prefix (lower case) -> tiers sorted by min_bits
 type CheerTier = { minBits: number; color: string; imageUrl: string }
 type Cheermotes = Map<string, CheerTier[]>
@@ -85,7 +92,8 @@ export class TwitchConnector implements ChatConnector {
   badgesRetryAt: Map<string, number> = new Map()
   cheermotesByChannel: Map<ChannelName, Cheermotes> = new Map()
   // Channel points rewards whose title or prompt carries FFZ:GE (FrankerFaceZ giant emote convention)
-  giantRewardsByChannel: Map<ChannelName, Set<string>> = new Map()
+  // Channel points rewards by id; giant: its title or prompt carries FFZ:GE
+  rewardsByChannel: Map<ChannelName, Map<string, ChannelReward>> = new Map()
   // When each channel's rewards may be asked again
   giantRewardsRetryAt: Map<ChannelName, number> = new Map()
 
@@ -150,7 +158,7 @@ export class TwitchConnector implements ChatConnector {
     // Badges are supplementary metadata - if Helix is flaky we still want to
     // join the channel and read messages instead of getting stuck forever in
     // the 'connecting' state.
-    this.refreshGiantRewards(channel)
+    this.refreshRewards(channel)
     try {
       const channelBadges = await this.fetch_badges(channel)
       if (channelBadges) this.badgesByChannel.set(channel, channelBadges)
@@ -609,10 +617,13 @@ export class TwitchConnector implements ChatConnector {
       return null
     }
 
-    // A reward we don't know: created or renamed to FFZ:GE after the join, or the first fetch failed
+    // A reward we don't know: created or renamed after the join, or the first fetch failed
     const rewardId = attrs['custom-reward-id']
-    if (rewardId && !this.giantRewardsByChannel.get(channel)?.has(rewardId)) {
-      this.refreshGiantRewards(channel)
+    const reward = rewardId
+      ? this.rewardsByChannel.get(channel)?.get(rewardId)
+      : undefined
+    if (rewardId && !reward) {
+      this.refreshRewards(channel)
     }
 
     const twitchFields: TwitchUserFields = {
@@ -623,11 +634,19 @@ export class TwitchConnector implements ChatConnector {
       turbo: attrs['turbo'] === '1',
       highlighted: attrs['msg-id'] === 'highlighted-message',
       giantEmote: attrs['msg-id'] === 'gigantified-emote-message' ||
-        (this.giantRewardsByChannel.get(channel)?.has(
-          attrs['custom-reward-id'] ?? '',
-        ) ?? false),
+        !!reward?.giant,
       firstMessage: attrs['first-msg'] === '1',
       badges,
+      ...(rewardId && {
+        reward: {
+          id: rewardId,
+          ...(reward && {
+            title: reward.title,
+            cost: reward.cost,
+            color: reward.color,
+          }),
+        },
+      }),
     }
 
     if (!this.usersById.has(username)) {
@@ -846,19 +865,21 @@ export class TwitchConnector implements ChatConnector {
   }
 
   // At most once a minute per channel
-  refreshGiantRewards(channel: ChannelName) {
+  refreshRewards(channel: ChannelName) {
     const now = Date.now()
     if ((this.giantRewardsRetryAt.get(channel) ?? 0) > now) return
     this.giantRewardsRetryAt.set(channel, now + GIANT_REWARDS_RETRY_MS)
-    this.fetch_giant_rewards(channel)
-      .then((rewards) => this.giantRewardsByChannel.set(channel, rewards))
+    this.fetch_rewards(channel)
+      .then((rewards) => this.rewardsByChannel.set(channel, rewards))
       .catch((error) =>
         this.log(LogLevel.DEBUG, `Failed to fetch rewards: ${error}`)
       )
   }
 
   // Reward titles aren't in IRC (only custom-reward-id); Twitch's public web GQL lists them without auth
-  async fetch_giant_rewards(channel: ChannelName): Promise<Set<string>> {
+  async fetch_rewards(
+    channel: ChannelName,
+  ): Promise<Map<string, ChannelReward>> {
     const response = await fetch('https://gql.twitch.tv/gql', {
       method: 'POST',
       headers: {
@@ -867,7 +888,7 @@ export class TwitchConnector implements ChatConnector {
       },
       body: JSON.stringify({
         query:
-          'query($login: String!) { channel(name: $login) { communityPointsSettings { customRewards { id title prompt } } } }',
+          'query($login: String!) { channel(name: $login) { communityPointsSettings { customRewards { id title prompt cost backgroundColor } } } }',
         variables: { login: channel },
       }),
     })
@@ -880,10 +901,13 @@ export class TwitchConnector implements ChatConnector {
     }
     const rewards =
       parsed.data.channel?.communityPointsSettings?.customRewards ?? []
-    return new Set(
-      rewards
-        .filter((r) => `${r.title} ${r.prompt ?? ''}`.includes('FFZ:GE'))
-        .map((r) => r.id),
+    return new Map(
+      rewards.map((r) => [r.id, {
+        title: r.title,
+        cost: r.cost,
+        color: r.backgroundColor ?? undefined,
+        giant: `${r.title} ${r.prompt ?? ''}`.includes('FFZ:GE'),
+      }]),
     )
   }
 

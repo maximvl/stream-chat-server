@@ -103,6 +103,8 @@ export type TwitchUserFields = {
   giantEmote: boolean
   // The user's first message in this channel ever
   firstMessage: boolean
+  // A channel points reward bought with this message; title is missing while the rewards still load
+  reward?: { id: string; title?: string; cost?: number; color?: string }
 }
 
 export type KickBadge = {

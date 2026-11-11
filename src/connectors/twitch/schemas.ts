@@ -50,6 +50,8 @@ export const RewardsResponseSchema = type({
           id: 'string',
           title: 'string',
           'prompt?': 'string | null',
+          'cost?': 'number',
+          'backgroundColor?': 'string | null',
         }).array(),
       }).or('null'),
     }).or('null'),
