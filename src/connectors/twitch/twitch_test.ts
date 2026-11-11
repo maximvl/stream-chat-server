@@ -53,6 +53,17 @@ Deno.test('twitch parses emotes by code point and keeps numeric user id', () => 
   }])
 })
 
+Deno.test('twitch takes emote names of a /me message from the text after the ACTION marker', () => {
+  const c = connector()
+  c.handleMessage(
+    frame(privmsg('m1', '42', '\x01ACTION 😀 Kappa hi\x01', '25:2-6')),
+  )
+
+  const [msg] = c.getMessages('chan', 0)
+  assertEquals(msg.text, '\x01ACTION 😀 Kappa hi\x01')
+  assertEquals(msg.emotes?.map((e) => e.name), ['Kappa'])
+})
+
 Deno.test('twitch notifies subscribers about moderated messages', () => {
   const c = connector()
   const events: ChatEvent[] = []

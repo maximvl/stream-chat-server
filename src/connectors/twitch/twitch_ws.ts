@@ -668,6 +668,11 @@ export class TwitchConnector implements ChatConnector {
       : Temporal.Now.instant().epochMilliseconds
 
     const text = rawMsg.message.slice(1)
+    // "/me" arrives as "\x01ACTION text\x01", while Twitch counts positions in the text alone
+    const action = '\x01ACTION '
+    const body = text.startsWith(action)
+      ? text.slice(action.length).split('\x01')[0]
+      : text
     const message: ChatMessage = {
       id: (attrs['id'] ?? crypto.randomUUID()) as MessageId,
       timestampMs,
@@ -676,9 +681,9 @@ export class TwitchConnector implements ChatConnector {
       channel,
       text,
       emotes: [
-        ...this.parseEmotes(attrs['emotes'], text),
-        ...this.parseGifs(attrs['gifs'], text),
-        ...this.parseCheers(channel, attrs['bits'], text),
+        ...this.parseEmotes(attrs['emotes'], body),
+        ...this.parseGifs(attrs['gifs'], body),
+        ...this.parseCheers(channel, attrs['bits'], body),
       ],
     }
     if (isNotice) {
