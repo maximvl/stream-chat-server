@@ -216,6 +216,10 @@ Deno.test('twitch prefers the channel badge over the global one of the same set'
     c.parseBadges('chan' as ChannelName, tag).map((b) => b.imageUrl)
   assertEquals(urls('subscriber/0,vip/1'), ['cat', 'vip'])
   assertEquals(urls('subscriber/12'), ['fox'])
+  assertEquals(
+    c.parseBadges('chan' as ChannelName, 'vip/1').map((b) => b.setId),
+    ['vip'],
+  )
 })
 
 Deno.test('twitch retries a failed badge fetch, at most once a minute', async () => {

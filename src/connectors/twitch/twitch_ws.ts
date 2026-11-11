@@ -758,6 +758,7 @@ export class TwitchConnector implements ChatConnector {
       if (badgeObj) {
         result.push({
           id: badgeObj.id,
+          setId: split[0],
           title: badgeObj.title,
           imageUrl: badgeObj.image_url_4x,
         })

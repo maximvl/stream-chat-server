@@ -84,6 +84,8 @@ export type ChatNotice = {
 
 export type TwitchBadge = {
   id: string
+  // Badge set: "moderator", "vip", "subscriber"... (id is the version inside it)
+  setId: string
   title: string
   imageUrl: string
 }
