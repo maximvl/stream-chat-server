@@ -22,6 +22,7 @@ import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
+import { httpsOnly } from '../avatars.ts'
 
 // The chat is read the way youtube.com/live_chat reads it, as a guest: no API key of ours, no quota
 const HEADERS = {
@@ -157,6 +158,8 @@ export function parseTextMessage(
   const isOwner = icons.has('OWNER')
   const isModerator = icons.has('MODERATOR')
   const isMember = badges.length > 0
+  const photos = r.authorPhoto?.thumbnails ?? []
+  const avatarUrl = httpsOnly(photos[photos.length - 1]?.url)
 
   return {
     id: r.id as MessageId,
@@ -165,6 +168,7 @@ export function parseTextMessage(
       // Handles come as "@name"; other platforms show bare nicks
       displayName: r.authorName?.simpleText.replace(/^@/, '') ||
         r.authorExternalChannelId,
+      ...(avatarUrl ? { avatarUrl } : {}),
       youtubeFields: {
         // YouTube's own name colors of the roles; others get the overlay's colors
         color: isOwner

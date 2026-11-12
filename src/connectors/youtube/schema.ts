@@ -28,6 +28,8 @@ export const TextMessage = type({
   timestampUsec: 'string',
   authorExternalChannelId: 'string',
   'authorName?': { simpleText: 'string' },
+  // Smallest first (32 and 64 px)
+  'authorPhoto?': Thumbnails,
   'message?': { runs: Run.array() },
   'authorBadges?': AuthorBadge.array(),
   // Super Chat amount, e.g. "$5.00"

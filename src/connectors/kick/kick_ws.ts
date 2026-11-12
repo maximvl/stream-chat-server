@@ -16,6 +16,7 @@ import {
   MessageDeletedData,
   RealtimeConnectionResponse,
   UserBannedData,
+  UserInChannelResponse,
   WsChatMsg,
   WsChatMsgData,
   WsModerationEvent,
@@ -26,6 +27,7 @@ import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
+import { AvatarCache, lookupEach } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -40,6 +42,8 @@ export class KickConnector implements ChatConnector {
   messages: Map<ChannelName, MessageStorage> = new Map()
 
   channelStatus: Map<ChannelName, ChannelStatus> = new Map()
+
+  avatars = new AvatarCache()
 
   log(level: LogLevel, ...msgs: unknown[]) {
     myLog(level, '[kick]', ...msgs)
@@ -372,6 +376,24 @@ export class KickConnector implements ChatConnector {
         channel: channelId,
       },
     })
+  }
+
+  // Keys are usernames (the chat sender has no picture); one request per user.
+  // Any channel answers the profile, Kick's own one always exists.
+  fetchAvatars(usernames: string[]): Promise<Record<string, string>> {
+    return this.avatars.get(
+      usernames,
+      (missing) =>
+        lookupEach(missing, async (username) => {
+          const response = await fetch(
+            `https://kick.com/api/v2/channels/kick/users/${username}`,
+          )
+          if (response.status === 404) return ''
+          if (!response.ok) throw new Error(`Kick answered ${response.status}`)
+          return UserInChannelResponse.assert(await response.json())
+            .profile_pic ?? ''
+        }),
+    )
   }
 
   async fetchChannelId(

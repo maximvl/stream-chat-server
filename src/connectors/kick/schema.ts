@@ -64,6 +64,9 @@ export const WsSubscribed = type({
   channel: 'string',
 })
 
+// kick.com/api/v2/channels/<any channel>/users/<username>
+export const UserInChannelResponse = type({ 'profile_pic?': 'string | null' })
+
 export const ChannelInfoResponse = type({
   id: 'number',
   user_id: 'number',

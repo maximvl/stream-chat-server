@@ -54,6 +54,7 @@ type Cheermotes = Map<string, CheerTier[]>
 import { type } from 'arktype'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
+import { AvatarCache } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -65,9 +66,6 @@ type RawMsg = {
 }
 
 type BoardcasterId = string & { readonly __brand: unique symbol }
-
-const AVATAR_TTL_MS = 3 * 60 * 60 * 1000
-const MAX_AVATARS = 50_000
 
 class BroadcasterFetchError extends Error {
   constructor(channel: string) {
@@ -104,8 +102,7 @@ export class TwitchConnector implements ChatConnector {
   // Last known ROOMSTATE of each channel, to tell mode changes from the snapshot on join
   roomModes: Map<ChannelName, Map<string, string>> = new Map()
   usersById: Map<UserId, ChatUser> = new Map()
-  // Profile image url by user id, '' for an id Twitch doesn't know; oldest first
-  avatars: Map<string, { url: string; expiresAt: number }> = new Map()
+  avatars = new AvatarCache()
 
   channelStatus: Map<ChannelName, ChannelStatus> = new Map()
 
@@ -805,43 +802,23 @@ export class TwitchConnector implements ChatConnector {
   }
 
   // Ids are numeric and at most 100 (one Helix call); throws when Twitch fails, so nothing is cached
-  async fetch_avatars(ids: string[]): Promise<Record<string, string>> {
-    const now = Date.now()
-    const result: Record<string, string> = {}
-    const missing: string[] = []
-    for (const id of ids) {
-      const cached = this.avatars.get(id)
-      if (!cached || cached.expiresAt <= now) missing.push(id)
-      else if (cached.url) result[id] = cached.url
-    }
-    if (missing.length === 0) return result
-
-    const response = await fetch(
-      `https://api.twitch.tv/helix/users?${
-        missing.map((id) => `id=${id}`).join('&')
-      }`,
-      { headers: await this.web_auth_headers() },
-    )
-    if (!response.ok) {
-      throw new Error(`Helix users answered ${response.status}`)
-    }
-    const parsed = UserResponseSchema.assert(await response.json())
-    const found = new Map(
-      parsed.data.map((user) => [user.id, user.profile_image_url]),
-    )
-    const expiresAt = now + AVATAR_TTL_MS
-    for (const id of missing) {
-      const url = found.get(id) ?? ''
-      // Re-inserted so the Map stays ordered oldest first for the size cap
-      this.avatars.delete(id)
-      this.avatars.set(id, { url, expiresAt })
-      if (url) result[id] = url
-    }
-    for (const id of this.avatars.keys()) {
-      if (this.avatars.size <= MAX_AVATARS) break
-      this.avatars.delete(id)
-    }
-    return result
+  fetchAvatars(ids: string[]): Promise<Record<string, string>> {
+    return this.avatars.get(ids, async (missing) => {
+      const response = await fetch(
+        `https://api.twitch.tv/helix/users?${
+          missing.map((id) => `id=${id}`).join('&')
+        }`,
+        { headers: await this.web_auth_headers() },
+      )
+      if (!response.ok) {
+        throw new Error(`Helix users answered ${response.status}`)
+      }
+      const parsed = UserResponseSchema.assert(await response.json())
+      const found = new Map(
+        parsed.data.map((user) => [user.id, user.profile_image_url]),
+      )
+      return new Map(missing.map((id) => [id, found.get(id) ?? '']))
+    })
   }
 
   async fetch_broadcaster_id(channel: ChannelName): Promise<BoardcasterId> {

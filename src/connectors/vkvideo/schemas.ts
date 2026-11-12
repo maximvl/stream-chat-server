@@ -55,6 +55,8 @@ export type ChatBadge = typeof ChatBadge.infer
 const MsgAuthor = type({
   id: 'number',
   displayName: 'string',
+  // '' when the user has none
+  'avatarUrl?': 'string',
   nickColor: 'number',
   isChatModerator: 'boolean',
   isChannelModerator: 'boolean',

@@ -26,6 +26,7 @@ Deno.test('vk smiles stay in the text and are listed as emotes', () => {
               author: {
                 id: 5,
                 displayName: 'bob',
+                avatarUrl: 'https://images.live.vkvideo.ru/user/5/avatar',
                 nickColor: 2,
                 isChatModerator: false,
                 isChannelModerator: false,
@@ -52,6 +53,10 @@ Deno.test('vk smiles stay in the text and are listed as emotes', () => {
 
   const [msg] = c.getMessages('chan', 0)
   assertEquals(msg.text, 'привет cool')
+  assertEquals(
+    msg.user.avatarUrl,
+    'https://images.live.vkvideo.ru/user/5/avatar',
+  )
   assertEquals(msg.emotes, [{
     id: 's1',
     name: 'cool',

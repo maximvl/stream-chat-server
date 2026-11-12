@@ -37,6 +37,8 @@ export interface ChatConnector {
   refreshToken?(): Promise<void>
   sendPing?(): Promise<void>
   pollMessages?(): Promise<void>
+  // Profile pictures by user key (id or username, per platform); throws when the platform didn't answer
+  fetchAvatars?(keys: string[]): Promise<Record<string, string>>
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }
@@ -166,6 +168,8 @@ export type VkUserFields = {
 export type ChatUser = {
   id: UserId
   displayName: string
+  // https profile picture, when the platform sends it with the message
+  avatarUrl?: string
   twitchFields?: TwitchUserFields
   kickFields?: KickUserFields
   vkFields?: VkUserFields

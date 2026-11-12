@@ -24,6 +24,7 @@ import { CHANNEL_INACTIVITY_TIMEOUT_MINUTES, LogLevel } from '../../config.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel } from '../utils.ts'
+import { httpsOnly } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
@@ -257,9 +258,11 @@ export class VkVideoConnector implements ChatConnector {
       }
     }
 
+    const avatarUrl = httpsOnly(data.author.avatarUrl)
     const msgUser: ChatUser = {
       id: data.author.id.toString() as UserId,
       displayName: data.author.displayName,
+      ...(avatarUrl ? { avatarUrl } : {}),
       vkFields: {
         nickColor: data.author.nickColor,
         isChatModerator: data.author.isChatModerator,

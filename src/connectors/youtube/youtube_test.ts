@@ -164,6 +164,12 @@ Deno.test('youtube super chats are messages with the amount', () => {
           timestampUsec: '1794117000000000',
           authorExternalChannelId: 'UCpayerxxxxxxxxxxxxxxxxx',
           authorName: { simpleText: '@payer' },
+          authorPhoto: {
+            thumbnails: [
+              { url: 'https://yt4.ggpht.com/p=s32-c-k' },
+              { url: 'https://yt4.ggpht.com/p=s64-c-k' },
+            ],
+          },
           purchaseAmountText: { simpleText: '$5.00' },
           message: { runs: [{ text: 'thanks' }] },
         },
@@ -173,6 +179,7 @@ Deno.test('youtube super chats are messages with the amount', () => {
   const [paid] = c.messages.get(CHANNEL)!.messages
   assertEquals(paid.text, '$5.00 thanks')
   assertEquals(paid.timestampMs, 1794117000000)
+  assertEquals(paid.user.avatarUrl, 'https://yt4.ggpht.com/p=s64-c-k')
 })
 
 Deno.test('youtube moderation events reach live subscribers', () => {

@@ -39,18 +39,23 @@ const LastMessagesLimit = type('string').pipe((value, ctx) => {
 
 export const MAX_AVATAR_IDS = 100
 
-// Comma-separated numeric user ids, deduplicated and capped at one Helix call
-const UserIds = type('string').pipe((value, ctx) => {
-  const ids = [...new Set(value.split(','))]
-  if (!ids.every((id) => /^\d{1,20}$/.test(id))) {
-    return ctx.error('must be comma-separated numeric ids')
-  }
-  return ids.slice(0, MAX_AVATAR_IDS)
-}).to('string[]')
+// What a user is looked up by: Twitch and GoodGame user ids, Kick usernames
+const AVATAR_KEY = {
+  twitch: /^\d{1,20}$/,
+  goodgame: /^\d{1,20}$/,
+  kick: /^\w{1,30}$/,
+}
 
+// Comma-separated keys, deduplicated and capped at one Twitch Helix call
 export const AvatarsRequest = type({
-  server: '"twitch"',
-  ids: UserIds,
+  server: '"twitch" | "goodgame" | "kick"',
+  ids: 'string',
+}).pipe(({ server, ids }, ctx) => {
+  const keys = [...new Set(ids.split(','))]
+  if (!keys.every((key) => AVATAR_KEY[server].test(key))) {
+    return ctx.error(`ids must be comma-separated ${server} user keys`)
+  }
+  return { server, ids: keys.slice(0, MAX_AVATAR_IDS) }
 })
 
 export const ChatLastMessagesRequest = type({

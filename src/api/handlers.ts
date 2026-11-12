@@ -10,7 +10,6 @@ import {
 import { ChannelName, ChatMessage } from '../connectors/types.ts'
 import { subscribe } from '../connectors/chatEvents.ts'
 import { normalizeChannel, toChatId } from '../connectors/utils.ts'
-import { TwitchConnector } from '../connectors/twitch/twitch_ws.ts'
 import {
   AvatarsRequest,
   ChatLastMessagesRequest,
@@ -19,6 +18,7 @@ import {
   ConnectRequest,
 } from './schema.ts'
 import { type } from 'arktype'
+import { myLog } from '../utils.ts'
 
 export function withCors(
   handler: (req: Request) => Promise<Response>,
@@ -104,7 +104,7 @@ const routes: Record<
   },
 }
 
-// Profile images of chatters by user id; ids Twitch doesn't know are left out
+// Profile images of chatters by user key; users the platform doesn't know are left out
 async function avatars(req: Request): Promise<Response> {
   const url = new URL(req.url)
   const params = AvatarsRequest({
@@ -116,17 +116,20 @@ async function avatars(req: Request): Promise<Response> {
   }
 
   const connector = AppState.connectors.get(params.server)
-  if (!(connector instanceof TwitchConnector)) {
+  if (!connector?.fetchAvatars) {
     return Response.json({ errors: ['Unsupported chat server'] }, {
       status: 400,
     })
   }
 
   try {
-    return Response.json({ avatars: await connector.fetch_avatars(params.ids) })
+    return Response.json({ avatars: await connector.fetchAvatars(params.ids) })
   } catch (error) {
-    connector.log(LogLevel.DEBUG, `Failed to fetch avatars: ${error}`)
-    return Response.json({ errors: ['Twitch did not answer'] }, {
+    myLog(
+      LogLevel.DEBUG,
+      `[${params.server}] Failed to fetch avatars: ${error}`,
+    )
+    return Response.json({ errors: ['The platform did not answer'] }, {
       status: 502,
     })
   }

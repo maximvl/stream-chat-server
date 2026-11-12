@@ -37,6 +37,9 @@ export const UserBanData = type({
   'duration?': 'number',
 })
 
+// goodgame.ru/api/4/users/<id>; avatar is a path on static.goodgame.ru
+export const UserResponse = type({ 'avatar?': 'string | null' })
+
 export const ChannelInfoResponse = type({
   id: 'number',
 })

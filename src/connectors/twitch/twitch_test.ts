@@ -4,6 +4,7 @@ import { ChatEvent, subscribe } from '../chatEvents.ts'
 import { toChatId } from '../utils.ts'
 import { TwitchConnector } from './twitch_ws.ts'
 import { AppState } from '../../app.ts'
+import { AvatarCache } from '../avatars.ts'
 import { API_TOKEN } from '../../config.ts'
 import { main_handler } from '../../api/handlers.ts'
 
@@ -15,7 +16,7 @@ function connector(): TwitchConnector {
     messages: new Map(),
     roomModes: new Map(),
     usersById: new Map(),
-    avatars: new Map(),
+    avatars: new AvatarCache(),
     web_auth_headers: () => Promise.resolve({}),
     globalBadges: new Map(),
     badgesByChannel: new Map(),

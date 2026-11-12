@@ -18,12 +18,14 @@ import {
   RemoveMessageData,
   Smile,
   UserBanData,
+  UserResponse,
   WsEvent,
 } from './schema.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
+import { AvatarCache, lookupEach } from '../avatars.ts'
 
 const WS_URL = 'wss://chat-1.goodgame.ru/chat2/'
 const SMILES_URL = 'https://goodgame.ru/api/4/smiles'
@@ -73,6 +75,8 @@ export class GoodgameConnector implements ChatConnector {
 
   // Smile code -> emote; one list holds global and all channel smiles
   smiles: Map<string, ChatEmote> = new Map()
+
+  avatars = new AvatarCache()
   smilesLoadedAtMs = 0
   smilesLoading: Promise<void> | null = null
 
@@ -384,6 +388,28 @@ export class GoodgameConnector implements ChatConnector {
       }
     }
     return null
+  }
+
+  // Keys are numeric user ids; GoodGame has no batch lookup, so each user is one request
+  fetchAvatars(ids: string[]): Promise<Record<string, string>> {
+    return this.avatars.get(
+      ids,
+      (missing) =>
+        lookupEach(missing, async (id) => {
+          const response = await fetch(
+            `https://goodgame.ru/api/4/users/${id}`,
+            {
+              headers: { accept: 'application/json' },
+            },
+          )
+          if (response.status === 404) return ''
+          if (!response.ok) {
+            throw new Error(`GoodGame answered ${response.status}`)
+          }
+          const { avatar } = UserResponse.assert(await response.json())
+          return avatar ? `https://static.goodgame.ru${avatar}` : ''
+        }),
+    )
   }
 
   disconnect(channelOrig: string): void {
