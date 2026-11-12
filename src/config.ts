@@ -60,3 +60,21 @@ export const YOUTUBE_NODE_TOKEN = getEnv('YOUTUBE_NODE_TOKEN') || ''
 
 // When set, the API (except /api/status, used by the healthcheck) wants "Authorization: Bearer <token>"
 export const API_TOKEN = getEnv('API_TOKEN') || ''
+
+// Abuse limits; requests with API_TOKEN, from private addresses or from RATE_LIMIT_ALLOWLIST are not limited.
+// Channels one connector may have joined; a new channel past it gets 503
+export const MAX_CHANNELS = Number(getEnv('MAX_CHANNELS') ?? 300)
+// API requests per client IP per minute, 0 turns it off
+export const RATE_LIMIT_PER_MINUTE = Number(
+  getEnv('RATE_LIMIT_PER_MINUTE') ?? 600,
+)
+// Requests per client IP per 10 minutes that join a channel not joined yet, 0 turns it off
+export const NEW_CHANNELS_PER_10_MINUTES = Number(
+  getEnv('NEW_CHANNELS_PER_10_MINUTES') ?? 30,
+)
+// Comma-separated IPs/CIDRs whose X-Forwarded-For / X-Real-IP is believed, e.g. the
+// docker bridge of nginx and the ranges of the DDoS protection in front of it.
+// Without it every request comes from nginx's private address and is not limited per IP.
+export const TRUSTED_PROXIES = getEnv('TRUSTED_PROXIES') ?? ''
+// Comma-separated IPs/CIDRs never limited (e.g. the RTE backend server)
+export const RATE_LIMIT_ALLOWLIST = getEnv('RATE_LIMIT_ALLOWLIST') ?? ''
