@@ -11,6 +11,42 @@ function connector(): VkVideoConnector {
   })
 }
 
+Deno.test('vk users without an avatar url get the picture by id', () => {
+  const c = connector()
+  c.handleMessage({
+    data: JSON.stringify({
+      push: {
+        channel: 'channel-chat:1',
+        pub: {
+          data: {
+            type: 'message',
+            data: {
+              id: 8,
+              createdAt: 1,
+              author: {
+                id: 6,
+                displayName: 'ann',
+                avatarUrl: '',
+                nickColor: 2,
+                isChatModerator: false,
+                isChannelModerator: false,
+                roles: [],
+                badges: [],
+              },
+              data: [{ type: 'text', content: '["hi"]' }],
+            },
+          },
+        },
+      },
+    }),
+  } as MessageEvent)
+  const [msg] = c.getMessages('chan', 0)
+  assertEquals(
+    msg.user.avatarUrl,
+    'https://images.live.vkvideo.ru/user/6/avatar',
+  )
+})
+
 Deno.test('vk smiles stay in the text and are listed as emotes', () => {
   const c = connector()
   c.handleMessage({

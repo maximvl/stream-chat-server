@@ -258,11 +258,13 @@ export class VkVideoConnector implements ChatConnector {
       }
     }
 
-    const avatarUrl = httpsOnly(data.author.avatarUrl)
+    // The picture by id answers VK's placeholder for users without an avatar
+    const avatarUrl = httpsOnly(data.author.avatarUrl) ||
+      `https://images.live.vkvideo.ru/user/${data.author.id}/avatar`
     const msgUser: ChatUser = {
       id: data.author.id.toString() as UserId,
       displayName: data.author.displayName,
-      ...(avatarUrl ? { avatarUrl } : {}),
+      avatarUrl,
       vkFields: {
         nickColor: data.author.nickColor,
         isChatModerator: data.author.isChatModerator,

@@ -39,16 +39,17 @@ const LastMessagesLimit = type('string').pipe((value, ctx) => {
 
 export const MAX_AVATAR_IDS = 100
 
-// What a user is looked up by: Twitch and GoodGame user ids, Kick usernames
+// What a user is looked up by: Twitch's numeric user id (twitchFields.userId), user.id elsewhere
 const AVATAR_KEY = {
   twitch: /^\d{1,20}$/,
   goodgame: /^\d{1,20}$/,
-  kick: /^\w{1,30}$/,
+  kick: /^\d{1,20}$/,
+  wtv: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
 }
 
 // Comma-separated keys, deduplicated and capped at one Twitch Helix call
 export const AvatarsRequest = type({
-  server: '"twitch" | "goodgame" | "kick"',
+  server: '"twitch" | "goodgame" | "kick" | "wtv"',
   ids: 'string',
 }).pipe(({ server, ids }, ctx) => {
   const keys = [...new Set(ids.split(','))]

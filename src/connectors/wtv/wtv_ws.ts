@@ -7,7 +7,12 @@ import {
   ConnectorStatus,
 } from '../types.ts'
 import { myLog } from '../../utils.ts'
-import { JoinChatResponse, ProfileByNicknameResponse } from './schema.ts'
+import {
+  ChannelResponse,
+  JoinChatResponse,
+  ProfileByNicknameResponse,
+} from './schema.ts'
+import { AvatarCache, lookupEach } from '../avatars.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel } from '../utils.ts'
@@ -33,6 +38,8 @@ export class WtvConnector implements ChatConnector {
 
   nicknameToUserId: Map<string, string> = new Map()
   userIdToNickname: Map<string, string> = new Map()
+
+  avatars = new AvatarCache()
 
   private stopped = new Set<ChannelName>()
   private opening = new Set<ChannelName>()
@@ -367,6 +374,29 @@ export class WtvConnector implements ChatConnector {
     const conn = this.connections.get(channel)
     this.connections.delete(channel)
     conn?.close(true)
+  }
+
+  // Keys are user ids (uuids); chat messages carry no picture, the user's channel does
+  fetchAvatars(ids: string[]): Promise<Record<string, string>> {
+    return this.avatars.get(
+      ids,
+      (missing) =>
+        lookupEach(missing, async (id) => {
+          const response = await fetch(
+            `https://streams-search-service.w.tv/api/v1/channels/${id}`,
+            {
+              headers: {
+                'User-Agent': WTV_USER_AGENT,
+                Accept: 'application/json',
+              },
+            },
+          )
+          if (response.status === 404) return ''
+          if (!response.ok) throw new Error(`w.tv answered ${response.status}`)
+          return ChannelResponse.assert(await response.json()).channel
+            .imageUrl ?? ''
+        }),
+    )
   }
 
   cleanup(): void {

@@ -31,6 +31,8 @@ import { AvatarCache, lookupEach } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
 
+const MAX_USERNAMES = 100_000
+
 export class KickConnector implements ChatConnector {
   websocket: WebSocket | null = null
 
@@ -44,6 +46,8 @@ export class KickConnector implements ChatConnector {
   channelStatus: Map<ChannelName, ChannelStatus> = new Map()
 
   avatars = new AvatarCache()
+  // Username by user id, from chat messages: Kick's public profile lookup only takes usernames; oldest first
+  usernames: Map<string, string> = new Map()
 
   log(level: LogLevel, ...msgs: unknown[]) {
     myLog(level, '[kick]', ...msgs)
@@ -241,6 +245,10 @@ export class KickConnector implements ChatConnector {
       })
     }
 
+    this.rememberUsername(
+      chatMsgData.sender.id.toString(),
+      chatMsgData.sender.username,
+    )
     const user: ChatUser = {
       id: chatMsgData.sender.id.toString() as UserId,
       displayName: chatMsgData.sender.username,
@@ -378,13 +386,18 @@ export class KickConnector implements ChatConnector {
     })
   }
 
-  // Keys are usernames (the chat sender has no picture); one request per user.
+  // Keys are user ids (the chat sender has no picture); one profile request per user.
   // Any channel answers the profile, Kick's own one always exists.
-  fetchAvatars(usernames: string[]): Promise<Record<string, string>> {
-    return this.avatars.get(
-      usernames,
+  // Ids of users not seen in a joined chat yet are left out, without caching, until they write.
+  async fetchAvatars(ids: string[]): Promise<Record<string, string>> {
+    const known = ids.filter((id) => this.usernames.has(id))
+    if (known.length === 0) return {}
+    return await this.avatars.get(
+      known,
       (missing) =>
-        lookupEach(missing, async (username) => {
+        lookupEach(missing, async (id) => {
+          const username = this.usernames.get(id)
+          if (!username) throw new Error(`Unknown Kick user ${id}`)
           const response = await fetch(
             `https://kick.com/api/v2/channels/kick/users/${username}`,
           )
@@ -394,6 +407,15 @@ export class KickConnector implements ChatConnector {
             .profile_pic ?? ''
         }),
     )
+  }
+
+  rememberUsername(id: string, username: string) {
+    this.usernames.delete(id)
+    this.usernames.set(id, username)
+    for (const oldest of this.usernames.keys()) {
+      if (this.usernames.size <= MAX_USERNAMES) break
+      this.usernames.delete(oldest)
+    }
   }
 
   async fetchChannelId(

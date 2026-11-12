@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from '@std/assert'
 import { AvatarCache, lookupEach } from './avatars.ts'
 import { KickConnector } from './kick/kick_ws.ts'
+import { WtvConnector } from './wtv/wtv_ws.ts'
 
 Deno.test('avatar cache keeps hits and misses, asks failed keys again and drops non-https urls', async () => {
   const cache = new AvatarCache()
@@ -25,10 +26,14 @@ Deno.test('avatar cache keeps hits and misses, asks failed keys again and drops 
   assertEquals(asked, [['bob', 'ghost', 'down', 'plain'], ['down']])
 })
 
-Deno.test('kick avatars are looked up by username, unknown users are misses', async () => {
+Deno.test('kick avatars are looked up by user id through the username seen in chat', async () => {
   const c = Object.assign(Object.create(KickConnector.prototype), {
     avatars: new AvatarCache(),
+    usernames: new Map(),
   }) as KickConnector
+  c.rememberUsername('1', 'Ice_Poseidon')
+  c.rememberUsername('2', 'NoPic')
+  c.rememberUsername('3', 'gone')
   const realFetch = globalThis.fetch
   const asked: string[] = []
   globalThis.fetch = (input) => {
@@ -46,11 +51,37 @@ Deno.test('kick avatars are looked up by username, unknown users are misses', as
     )
   }
   try {
-    assertEquals(await c.fetchAvatars(['Ice_Poseidon', 'NoPic', 'ghost']), {
-      Ice_Poseidon: 'https://files.kick.com/p.webp',
+    assertEquals(await c.fetchAvatars(['1', '2', '3', '99']), {
+      '1': 'https://files.kick.com/p.webp',
     })
-    await c.fetchAvatars(['ghost', 'NoPic'])
-    assertEquals(asked, ['Ice_Poseidon', 'NoPic', 'ghost'])
+    // 2 and 3 are cached misses; 99 never wrote, so it is not asked
+    assertEquals(await c.fetchAvatars(['3', '2', '99']), {})
+    assertEquals(asked, ['Ice_Poseidon', 'NoPic', 'gone'])
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+Deno.test('w.tv avatars come from the user channel, with a user agent', async () => {
+  const c = Object.assign(Object.create(WtvConnector.prototype), {
+    avatars: new AvatarCache(),
+  }) as WtvConnector
+  const id = '01a1743a-c8c5-71d8-8fe0-94b57a9dfd0e'
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (input, init) => {
+    assertEquals(new Headers(init?.headers).has('user-agent'), true)
+    assertEquals(
+      String(input),
+      `https://streams-search-service.w.tv/api/v1/channels/${id}`,
+    )
+    return Promise.resolve(Response.json({
+      channel: { channelId: id, imageUrl: 'https://files.w.tv/pub/a' },
+    }))
+  }
+  try {
+    assertEquals(await c.fetchAvatars([id]), {
+      [id]: 'https://files.w.tv/pub/a',
+    })
   } finally {
     globalThis.fetch = realFetch
   }

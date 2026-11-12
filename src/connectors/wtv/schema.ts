@@ -7,6 +7,9 @@ export const ProfileByNicknameResponse = type({
   },
 })
 
+// streams-search-service.w.tv/api/v1/channels/<userId>; every user has a channel, imageUrl is '' without an avatar
+export const ChannelResponse = type({ channel: { 'imageUrl?': 'string' } })
+
 export const JoinChatResponse = type({
   token: 'string',
 })
