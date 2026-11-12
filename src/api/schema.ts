@@ -37,6 +37,22 @@ const LastMessagesLimit = type('string').pipe((value, ctx) => {
   return limit
 }).to('number')
 
+export const MAX_AVATAR_IDS = 100
+
+// Comma-separated numeric user ids, deduplicated and capped at one Helix call
+const UserIds = type('string').pipe((value, ctx) => {
+  const ids = [...new Set(value.split(','))]
+  if (!ids.every((id) => /^\d{1,20}$/.test(id))) {
+    return ctx.error('must be comma-separated numeric ids')
+  }
+  return ids.slice(0, MAX_AVATAR_IDS)
+}).to('string[]')
+
+export const AvatarsRequest = type({
+  server: '"twitch"',
+  ids: UserIds,
+})
+
 export const ChatLastMessagesRequest = type({
   server: ChatServer,
   channel: 'string',

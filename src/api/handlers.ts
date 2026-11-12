@@ -3,13 +3,16 @@ import {
   API_TOKEN,
   CORS_HOSTS,
   DEFAULT_LAST_MESSAGES_LIMIT,
+  LogLevel,
   MAX_LAST_MESSAGES_LIMIT,
   MAX_MESSAGES_RESPONSE,
 } from '../config.ts'
 import { ChannelName, ChatMessage } from '../connectors/types.ts'
 import { subscribe } from '../connectors/chatEvents.ts'
 import { normalizeChannel, toChatId } from '../connectors/utils.ts'
+import { TwitchConnector } from '../connectors/twitch/twitch_ws.ts'
 import {
+  AvatarsRequest,
   ChatLastMessagesRequest,
   ChatMessagesRequest,
   ChatStatusRequest,
@@ -96,6 +99,37 @@ const routes: Record<
   '/api/status': {
     GET: app_status,
   },
+  '/api/avatars': {
+    GET: avatars,
+  },
+}
+
+// Profile images of chatters by user id; ids Twitch doesn't know are left out
+async function avatars(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const params = AvatarsRequest({
+    server: url.searchParams.get('server'),
+    ids: url.searchParams.get('ids'),
+  })
+  if (params instanceof type.errors) {
+    return Response.json({ errors: params.issues }, { status: 400 })
+  }
+
+  const connector = AppState.connectors.get(params.server)
+  if (!(connector instanceof TwitchConnector)) {
+    return Response.json({ errors: ['Unsupported chat server'] }, {
+      status: 400,
+    })
+  }
+
+  try {
+    return Response.json({ avatars: await connector.fetch_avatars(params.ids) })
+  } catch (error) {
+    connector.log(LogLevel.DEBUG, `Failed to fetch avatars: ${error}`)
+    return Response.json({ errors: ['Twitch did not answer'] }, {
+      status: 502,
+    })
+  }
 }
 
 const STREAM_KEEPALIVE_MS = 20_000

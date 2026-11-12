@@ -3,6 +3,9 @@ import { ChannelName, MessageId } from '../types.ts'
 import { ChatEvent, subscribe } from '../chatEvents.ts'
 import { toChatId } from '../utils.ts'
 import { TwitchConnector } from './twitch_ws.ts'
+import { AppState } from '../../app.ts'
+import { API_TOKEN } from '../../config.ts'
+import { main_handler } from '../../api/handlers.ts'
 
 // Skips the constructor: it fetches global badges from Helix
 function connector(): TwitchConnector {
@@ -12,6 +15,8 @@ function connector(): TwitchConnector {
     messages: new Map(),
     roomModes: new Map(),
     usersById: new Map(),
+    avatars: new Map(),
+    web_auth_headers: () => Promise.resolve({}),
     globalBadges: new Map(),
     badgesByChannel: new Map(),
     badgesRetryAt: new Map(),
@@ -358,4 +363,72 @@ Deno.test('twitch tells which channel points reward a message bought', () => {
     cost: 500,
     color: '#9146FF',
   })
+})
+
+Deno.test('twitch avatars: validates ids, caches hits and misses, answers 502 without caching when Helix fails', async () => {
+  const c = connector()
+  AppState.connectors.set('twitch', c)
+  const realFetch = globalThis.fetch
+  const asked: string[] = []
+  let failing = false
+  globalThis.fetch = (input) => {
+    const url = new URL(String(input))
+    asked.push(url.searchParams.getAll('id').join(','))
+    if (failing) return Promise.resolve(new Response('', { status: 500 }))
+    return Promise.resolve(Response.json({
+      data: url.searchParams.getAll('id').filter((id) => id === '1').map((
+        id,
+      ) => ({
+        id,
+        login: 'bob',
+        display_name: 'Bob',
+        type: '',
+        broadcaster_type: '',
+        description: '',
+        profile_image_url: 'https://cdn/bob-300x300.png',
+        offline_image_url: '',
+        view_count: 0,
+        created_at: '',
+      })),
+    }))
+  }
+  const get = (query: string) =>
+    main_handler(
+      new Request(`http://localhost/api/avatars?${query}`, {
+        headers: API_TOKEN ? { authorization: `Bearer ${API_TOKEN}` } : {},
+      }),
+    )
+
+  try {
+    assertEquals((await get('server=kick&ids=1')).status, 400)
+    assertEquals((await get('server=twitch&ids=1,abc')).status, 400)
+    assertEquals((await get('server=twitch')).status, 400)
+    assertEquals(asked, [])
+
+    const first = await get('server=twitch&ids=1,2,1')
+    assertEquals(await first.json(), {
+      avatars: { '1': 'https://cdn/bob-300x300.png' },
+    })
+    assertEquals(asked, ['1,2'])
+
+    // Both the hit and the miss come from the cache
+    const second = await get('server=twitch&ids=2,1')
+    assertEquals(await second.json(), {
+      avatars: { '1': 'https://cdn/bob-300x300.png' },
+    })
+    assertEquals(asked, ['1,2'])
+
+    failing = true
+    assertEquals((await get('server=twitch&ids=3,1')).status, 502)
+    failing = false
+    await get('server=twitch&ids=3')
+    assertEquals(asked, ['1,2', '3', '3'])
+
+    const many = Array.from({ length: 150 }, (_, i) => i + 10).join(',')
+    await get(`server=twitch&ids=${many}`)
+    assertEquals(asked.at(-1)?.split(',').length, 100)
+  } finally {
+    globalThis.fetch = realFetch
+    AppState.connectors.delete('twitch')
+  }
 })
