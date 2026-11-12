@@ -6,6 +6,7 @@ import {
   LogLevel,
   MAX_LAST_MESSAGES_LIMIT,
   MAX_MESSAGES_RESPONSE,
+  TRUSTED_PROXIES,
 } from '../config.ts'
 import { ChannelName, ChatMessage } from '../connectors/types.ts'
 import { subscribe } from '../connectors/chatEvents.ts'
@@ -19,11 +20,15 @@ import {
 } from './schema.ts'
 import { type } from 'arktype'
 import { myLog } from '../utils.ts'
+import { admin_handler } from './admin.ts'
+import { clientIp, ipMatcher } from './limits.ts'
 
-export function withCors(
-  handler: (req: Request) => Promise<Response>,
-): (req: Request) => Promise<Response> {
-  return async (req) => {
+const trustedProxy = ipMatcher(TRUSTED_PROXIES)
+
+type Handler = (req: Request, info?: Deno.ServeHandlerInfo) => Promise<Response>
+
+export function withCors(handler: Handler): Handler {
+  return async (req, info) => {
     const origin = req.headers.get('origin') ?? ''
     const allowedHost = CORS_HOSTS.includes(origin)
 
@@ -40,7 +45,7 @@ export function withCors(
       })
     }
 
-    const response = await handler(req)
+    const response = await handler(req, info)
 
     const headers = new Headers(response.headers)
     if (allowedHost) {
@@ -57,8 +62,13 @@ export function withCors(
   }
 }
 
-export function main_handler(req: Request): Promise<Response> {
+// info is missing in tests: no client address, nothing tracked or refused
+export function main_handler(
+  req: Request,
+  info?: Deno.ServeHandlerInfo,
+): Promise<Response> {
   const url = new URL(req.url)
+  if (url.pathname.startsWith('/api/admin/')) return admin_handler(req)
 
   const routePath = routes[url.pathname]
   if (!routePath) {
@@ -77,12 +87,26 @@ export function main_handler(req: Request): Promise<Response> {
     return Promise.resolve(new Response('Unauthorized', { status: 401 }))
   }
 
-  return routeMethod(req)
+  const remote = (info?.remoteAddr as Deno.NetAddr | undefined)?.hostname
+  const ip = remote ? clientIp(req, remote, trustedProxy) : ''
+  if (ip && url.pathname !== '/api/status') {
+    if (AppState.bans.matches(ip)) {
+      return Promise.resolve(new Response('Forbidden', { status: 403 }))
+    }
+    AppState.clients.seen(ip, req)
+    const server = url.searchParams.get('server')
+    const channel = url.searchParams.get('channel')
+    if (server && channel) {
+      AppState.clients.chat(ip, toChatId(server, normalizeChannel(channel)))
+    }
+  }
+
+  return routeMethod(req, ip)
 }
 
 const routes: Record<
   string,
-  Record<string, (req: Request) => Promise<Response>>
+  Record<string, (req: Request, ip: string) => Promise<Response>>
 > = {
   '/api/chat_connect': {
     POST: chat_connect,
@@ -145,7 +169,7 @@ function noticeFilter(url: URL): (message: ChatMessage) => boolean {
 }
 
 // Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear'} events of one chat
-function chat_stream(req: Request): Promise<Response> {
+function chat_stream(req: Request, ip: string): Promise<Response> {
   const url = new URL(req.url)
   const params = ChatStatusRequest({
     server: url.searchParams.get('server'),
@@ -205,9 +229,22 @@ function chat_stream(req: Request): Promise<Response> {
       send('retry: 3000\n\n')
       keepAlive()
       const timer = setInterval(keepAlive, STREAM_KEEPALIVE_MS)
+      const forget = AppState.clients.streamOpened(
+        ip,
+        toChatId(params.server, channel),
+        () => {
+          cleanup()
+          try {
+            controller.close()
+          } catch {
+            // already closed by the client
+          }
+        },
+      )
       cleanup = () => {
         clearInterval(timer)
         unsubscribe()
+        forget()
       }
     },
     cancel() {
@@ -227,7 +264,7 @@ function chat_stream(req: Request): Promise<Response> {
   )
 }
 
-async function chat_connect(req: Request): Promise<Response> {
+async function chat_connect(req: Request, ip: string): Promise<Response> {
   const bodyText = await req.text()
   let bodyJson
   try {
@@ -261,6 +298,12 @@ async function chat_connect(req: Request): Promise<Response> {
     )
   }
 
+  if (ip) {
+    AppState.clients.chat(
+      ip,
+      toChatId(body.server, normalizeChannel(body.channel)),
+    )
+  }
   await connector.connect(body.channel as ChannelName)
   const status = connector.getChannelStatus(body.channel as ChannelName)
 

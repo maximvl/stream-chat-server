@@ -60,3 +60,11 @@ export const YOUTUBE_NODE_TOKEN = getEnv('YOUTUBE_NODE_TOKEN') || ''
 
 // When set, the API (except /api/status, used by the healthcheck) wants "Authorization: Bearer <token>"
 export const API_TOKEN = getEnv('API_TOKEN') || ''
+
+// When set, /api/admin/* (the RTE chats admin, through the RTE backend) wants "Authorization: Bearer <token>";
+// unset, those routes don't exist
+export const ADMIN_TOKEN = getEnv('ADMIN_TOKEN') || ''
+
+// Proxies in front of this server (comma-separated addresses or CIDR ranges): only their X-Forwarded-For /
+// X-Real-IP is believed for the client address
+export const TRUSTED_PROXIES = getEnv('TRUSTED_PROXIES') || ''

@@ -17,6 +17,8 @@ import { GoodgameConnector } from './connectors/goodgame/goodgame_ws.ts'
 import { YoutubeConnector } from './connectors/youtube/youtube_chat.ts'
 import { YoutubeRemoteConnector } from './connectors/youtube/youtube_remote.ts'
 import { ChatConnector } from './connectors/types.ts'
+import { BanList } from './api/clients.ts'
+import { sqliteBanStore } from './db/bans.ts'
 
 // One failing connector must neither stop the loop nor crash the process
 async function connectorLoop(
@@ -60,6 +62,9 @@ if (import.meta.main) {
         : new YoutubeConnector(),
     )
   }
+
+  AppState.bans = new BanList(sqliteBanStore)
+  await AppState.bans.load()
 
   connectorLoop('cleanup', 1000 * 60 * 5, (c) => c.cleanup())
   connectorLoop('tokenRefresh', 1000 * 60 * 5, (c) => c.refreshToken?.())

@@ -1,5 +1,5 @@
 // Client addresses and per-IP request limits.
-// Not wired into the API yet: kept for an admin view of suspicious clients and bans.
+// clientIp and ipMatcher serve the admin view of clients and the ban list; RateLimiter is not wired in yet.
 
 type Range = { value: bigint; bits: number; prefix: number }
 
@@ -30,6 +30,16 @@ function parseIp(ip: string): { value: bigint; bits: number } | null {
     ),
     bits: 128,
   }
+}
+
+// One address or CIDR range, IPv4 or IPv6
+export function isIpOrRange(entry: string): boolean {
+  const [addr, prefixText, extra] = entry.split('/')
+  const ip = parseIp(addr)
+  if (!ip || extra !== undefined) return false
+  const prefix = prefixText === undefined ? ip.bits : Number(prefixText)
+  return (prefixText === undefined || /^\d+$/.test(prefixText)) &&
+    Number.isInteger(prefix) && prefix >= 0 && prefix <= ip.bits
 }
 
 // Comma-separated addresses and CIDR ranges, IPv4 or IPv6; bad entries are skipped

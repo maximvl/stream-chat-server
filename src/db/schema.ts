@@ -12,3 +12,10 @@ export const appTokensTable = sqliteTable('app_tokens', {
   expires_at: int().notNull(),
   expires_at_str: text().notNull(),
 })
+
+// Addresses or CIDR ranges the API refuses (except /api/status), set from the RTE chats admin
+export const bannedIpsTable = sqliteTable('banned_ips', {
+  ip: text().primaryKey(),
+  reason: text().notNull().default(''),
+  created_at: int().notNull(),
+})
