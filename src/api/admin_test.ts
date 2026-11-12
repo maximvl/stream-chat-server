@@ -108,6 +108,9 @@ Deno.test('admin routes want the admin token and ban addresses from the whole AP
     (await admin('PUT', '/api/admin/bans', { ip: 'nope' })).status,
     400,
   )
+  for (const ip of ['172.19.0.1', '10.0.0.0/8', '::1']) {
+    assertEquals((await admin('PUT', '/api/admin/bans', { ip })).status, 400)
+  }
 
   await (await avatars('203.0.113.7')).body?.cancel()
   let closed = 0
