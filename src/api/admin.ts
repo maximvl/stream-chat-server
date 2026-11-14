@@ -9,6 +9,15 @@ import { ipMatcher, isIpOrRange, PRIVATE_RANGES } from './limits.ts'
 const MAX_REASON = 200
 // Proxies in front of us and our own services on the docker network: banning them cuts everyone off
 const isPrivate = ipMatcher(PRIVATE_RANGES)
+// An address inside each private range: a range covering one (0.0.0.0/0, "/2" typed for "/24") cuts everyone off too
+const PRIVATE_SAMPLES = [
+  '127.0.0.1',
+  '10.0.0.1',
+  '172.16.0.1',
+  '192.168.0.1',
+  '::1',
+  'fc00::1',
+]
 
 function authorized(req: Request, token: string): boolean {
   const got = new TextEncoder().encode(req.headers.get('authorization') ?? '')
@@ -72,7 +81,7 @@ async function ban(req: Request): Promise<Response> {
   }
   const ip = typeof body?.ip === 'string' ? body.ip.trim() : ''
   if (!isIpOrRange(ip)) return error(400, 'Not an IP address or CIDR range')
-  if (isPrivate(ip.split('/')[0])) {
+  if (isPrivate(ip.split('/')[0]) || PRIVATE_SAMPLES.some(ipMatcher(ip))) {
     return error(
       400,
       'A private address: our proxies and services, not a client',
