@@ -614,6 +614,10 @@ function parseContent(parts: (typeof ContentData.infer)[]) {
           name: content.name,
           imageUrl: content.largeUrl,
         })
+        break
+      case 'link':
+        // The address itself, as Twitch shows links: clients turn it back into a link
+        messageParts.push(content.url)
     }
   }
   return { text: messageParts.join(' '), emotes, mentions }

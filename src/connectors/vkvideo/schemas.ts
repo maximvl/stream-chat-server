@@ -83,11 +83,17 @@ const ContentDataSmile = type({
   largeUrl: 'string',
 })
 
+// A link VK cut out of the text (donation pages, any URL), its address in url
+const ContentDataLink = type({
+  type: '"link"',
+  url: 'string',
+})
+
 const ContentIgnore = type({})
 
 export const ContentData = ContentDataMention.or(ContentDataText).or(
   ContentDataSmile,
-).or(ContentIgnore)
+).or(ContentDataLink).or(ContentIgnore)
 
 export const WsChatMessage = type({
   push: type({

@@ -160,6 +160,13 @@ Deno.test('vk pins and polls become chat state', () => {
     data: [
       { type: 'text', content: '["Ставим лайки","unstyled",[]]' },
       { type: 'smile', id: 's1', name: 'Smile', largeUrl: 'https://x/s.png' },
+      {
+        type: 'link',
+        url: 'https://donatty.com/ann',
+        content: '["https://donatty.com/ann","unstyled",[]]',
+        explicit: false,
+        donation: true,
+      },
       { type: 'text', content: '', modificator: 'BLOCK_END' },
     ],
     kind: 'permanent',
@@ -194,7 +201,7 @@ Deno.test('vk pins and polls become chat state', () => {
 
   assertEquals(events.map((e) => e.type), ['pin', 'pin', 'poll', 'poll', 'pin'])
   const pin = events[1].type === 'pin' ? events[1].pin : null
-  assertEquals(pin?.text, 'Ставим лайки Smile')
+  assertEquals(pin?.text, 'Ставим лайки Smile https://donatty.com/ann')
   assertEquals(pin?.emotes?.map((e) => e.name), ['Smile'])
   assertEquals(pin?.user.vkFields?.color, '#1D90FF')
   const poll = events[2].type === 'poll' ? events[2].poll : null
