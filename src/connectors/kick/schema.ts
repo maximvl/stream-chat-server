@@ -55,6 +55,19 @@ export const WsModerationEvent = type({
   channel: 'string',
 })
 
+// A channel hosting (raiding) this one; arrives on the same chatroom channel as messages
+export const WsHostEvent = type({
+  event: '"App\\Events\\StreamHostEvent"',
+  data: 'string',
+  channel: 'string',
+})
+
+export const StreamHostData = type({
+  host_username: 'string',
+  number_viewers: 'number',
+  'optional_message?': 'string | null',
+})
+
 export const MessageDeletedData = type({ message: { id: 'string' } })
 export const UserBannedData = type({ user: { id: 'number | string' } })
 

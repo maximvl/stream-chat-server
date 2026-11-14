@@ -62,3 +62,20 @@ Deno.test('kick moderation events reach live subscribers', () => {
   // History served to pollers is untouched
   assertEquals(storage.messages.length, 3)
 })
+
+Deno.test('kick host event becomes a raid notice', () => {
+  const c = connector()
+  c.handleMessage(
+    frame('App\\Events\\StreamHostEvent', {
+      chatroom_id: 42,
+      optional_message: '',
+      number_viewers: 15,
+      host_username: 'Eve',
+    }),
+  )
+  const [msg] = c.messages.get('chan' as ChannelName)!.messages
+  assertEquals(msg.server, 'kick')
+  assertEquals(msg.user.displayName, 'Eve')
+  assertEquals(msg.notice?.kind, 'raid')
+  assertEquals(msg.notice?.params, { displayName: 'Eve', viewerCount: '15' })
+})

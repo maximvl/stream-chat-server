@@ -161,7 +161,7 @@ async function avatars(req: Request): Promise<Response> {
 
 const STREAM_KEEPALIVE_MS = 20_000
 
-// Twitch system notices (subs, raids, timeouts...) are opt-in with notices=1: older clients expect chat lines only
+// System notices (Twitch subs, raids, timeouts..., Kick raids) are opt-in with notices=1: older clients expect chat lines only
 function noticeFilter(url: URL): (message: ChatMessage) => boolean {
   return url.searchParams.get('notices') === '1'
     ? () => true

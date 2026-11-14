@@ -15,10 +15,12 @@ import {
   ChannelInfoResponse,
   MessageDeletedData,
   RealtimeConnectionResponse,
+  StreamHostData,
   UserBannedData,
   UserInChannelResponse,
   WsChatMsg,
   WsChatMsgData,
+  WsHostEvent,
   WsModerationEvent,
   WsPong,
   WsSubscribed,
@@ -193,6 +195,12 @@ export class KickConnector implements ChatConnector {
       return
     }
 
+    const host = WsHostEvent(jsonData)
+    if (!(host instanceof type.errors)) {
+      this.handleHost(host)
+      return
+    }
+
     const chatMsg = WsChatMsg(jsonData)
     if (chatMsg instanceof type.errors) {
       // No matching known message type; only log if we can identify it as chat-related
@@ -271,13 +279,58 @@ export class KickConnector implements ChatConnector {
       this.log(LogLevel.VERBOSE, `Parsed message: ${JSON.stringify(msg)}`)
     }
 
+    this.storageFor(channel).addMessage(msg)
+  }
+
+  storageFor(channel: ChannelName): MessageStorage {
     let storage = this.messages.get(channel)
     if (!storage) {
       storage = new MessageStorage()
       this.messages.set(channel, storage)
     }
+    return storage
+  }
 
-    storage.addMessage(msg)
+  // Kick's raid, as a notice in Twitch's shape: kind "raid" with displayName and viewerCount
+  handleHost(event: typeof WsHostEvent.infer) {
+    const channel = this.reverseChannelsMap.get(
+      event.channel as InternalChannelId,
+    )
+    if (!channel) {
+      return
+    }
+    let data: unknown
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      this.log(LogLevel.DEBUG, `Bad host event data: ${event.data}`)
+      return
+    }
+    const host = StreamHostData(data)
+    if (host instanceof type.errors) {
+      this.log(LogLevel.DEBUG, `Bad host event: ${host.summary}`)
+      return
+    }
+    this.storageFor(channel).addMessage({
+      id: crypto.randomUUID() as MessageId,
+      timestampMs: Temporal.Now.instant().epochMilliseconds,
+      user: {
+        id: host.host_username as UserId,
+        displayName: host.host_username,
+      },
+      server: 'kick',
+      channel,
+      text: host.optional_message ?? '',
+      notice: {
+        kind: 'raid',
+        params: {
+          displayName: host.host_username,
+          viewerCount: String(host.number_viewers),
+        },
+        systemText:
+          `${host.host_username} is raiding with a party of ${host.number_viewers}.`,
+      },
+    })
   }
 
   // Deleted message, banned or timed out user, cleared chat. Polled history is
