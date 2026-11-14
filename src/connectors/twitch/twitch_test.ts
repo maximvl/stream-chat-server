@@ -434,6 +434,96 @@ Deno.test('twitch avatars: validates ids, caches hits and misses, answers 502 wi
   }
 })
 
+Deno.test('twitch join asks GQL for the pin and the prediction up, a locked one included', async () => {
+  const c = connector()
+  const realFetch = globalThis.fetch
+  let channel: unknown = null
+  globalThis.fetch = () => Promise.resolve(Response.json({ data: { channel } }))
+  const outcome = (id: string, totalPoints: number) => ({
+    id,
+    title: id.toUpperCase(),
+    totalPoints,
+    totalUsers: 2,
+  })
+  try {
+    channel = {
+      pinnedChatMessages: {
+        edges: [{
+          node: {
+            endsAt: null,
+            pinnedMessage: {
+              id: 'p1',
+              content: {
+                text: 'hi Kappa',
+                fragments: [{ text: 'hi ', content: null }, {
+                  text: 'Kappa',
+                  content: { __typename: 'Emote', emoteID: '25' },
+                }],
+              },
+              sender: {
+                id: '7',
+                login: 'eve',
+                displayName: 'Eve',
+                chatColor: null,
+              },
+            },
+          },
+        }],
+      },
+      activePredictionEvents: [],
+      lockedPredictionEvents: [{
+        id: 'e1',
+        title: 'Win?',
+        status: 'LOCKED',
+        createdAt: '2026-11-14T03:15:40Z',
+        predictionWindowSeconds: 120,
+        outcomes: [outcome('yes', 300), outcome('no', 100)],
+      }],
+    }
+    const locked = await c.fetch_state('chan' as ChannelName, '42')
+    assertEquals(locked.pin?.text, 'hi Kappa')
+    assertEquals(locked.pin?.emotes?.map((e) => e.name), ['Kappa'])
+    assertEquals(locked.prediction, {
+      id: 'e1',
+      title: 'Win?',
+      outcomes: [{ title: 'YES', points: 300, users: 2 }, {
+        title: 'NO',
+        points: 100,
+        users: 2,
+      }],
+      state: 'locked',
+    })
+
+    channel = {
+      pinnedChatMessages: { edges: [] },
+      activePredictionEvents: [{
+        id: 'e2',
+        title: 'Map?',
+        status: 'ACTIVE',
+        createdAt: '2026-11-14T03:15:40Z',
+        predictionWindowSeconds: 120,
+        outcomes: [outcome('a', 0), outcome('b', 0)],
+      }],
+      lockedPredictionEvents: [],
+    }
+    const open = await c.fetch_state('chan' as ChannelName, '42')
+    assertEquals(open.pin, null)
+    assertEquals(open.prediction?.state, 'open')
+    assertEquals(
+      open.prediction?.endsAtMs,
+      Date.parse('2026-11-14T03:15:40Z') + 120_000,
+    )
+
+    channel = { pinnedChatMessages: null }
+    assertEquals(await c.fetch_state('chan' as ChannelName, '42'), {
+      pin: null,
+      prediction: null,
+    })
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
 Deno.test('twitch pins and polls from PubSub become chat state', () => {
   const c = connector()
   c.channelByBroadcaster = new Map([['42', 'chan' as ChannelName]])

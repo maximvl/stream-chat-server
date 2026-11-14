@@ -13,6 +13,8 @@ import {
   ChatEmote,
   ChatMessage,
   ChatNotice,
+  ChatPin,
+  ChatPrediction,
   ChatServer,
   ChatUser,
   ConnectorStatus,
@@ -24,8 +26,8 @@ import {
 import {
   BadgeResponseSchema,
   BadgeVersion,
+  ChannelStateResponseSchema,
   CheermotesResponseSchema,
-  PinnedResponseSchema,
   RewardsResponseSchema,
   UserResponseSchema,
 } from './schemas.ts'
@@ -212,7 +214,7 @@ export class TwitchConnector implements ChatConnector {
     this.watchPinPoll(channelLower)
   }
 
-  // Pinned message, poll and prediction from PubSub, plus the pin already up from GQL
+  // Pinned message, poll and prediction from PubSub, plus the pin and prediction already up from GQL
   async watchPinPoll(channel: ChannelName) {
     let id: string
     try {
@@ -226,11 +228,15 @@ export class TwitchConnector implements ChatConnector {
       this.handlePubSub(topic, message)
     )
     this.pubsub.listen(pubsubTopics(id))
-    this.fetch_pinned(channel, id)
-      // null too: a pin taken down while PubSub was away must not stay
-      .then((pin) => setPin(toChatId('twitch', channel), pin))
+    const chatId = toChatId('twitch', channel)
+    this.fetch_state(channel, id)
+      // null too: a pin or prediction gone while PubSub was away must not stay
+      .then(({ pin, prediction }) => {
+        setPin(chatId, pin)
+        setPrediction(chatId, prediction)
+      })
       .catch((error) =>
-        this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
+        this.log(LogLevel.DEBUG, `Failed to fetch pin and prediction: ${error}`)
       )
   }
 
@@ -263,8 +269,14 @@ export class TwitchConnector implements ChatConnector {
     }
   }
 
-  // The pin already up when the channel is joined, from Twitch's public web GQL like the rewards
-  async fetch_pinned(channel: ChannelName, id: string) {
+  // The pin and prediction already up when the channel is joined, from Twitch's public web GQL like the
+  // rewards: PubSub only tells of changes, and a locked prediction has none until its result
+  async fetch_state(
+    channel: ChannelName,
+    id: string,
+  ): Promise<{ pin: ChatPin | null; prediction: ChatPrediction | null }> {
+    const prediction =
+      'id title status createdAt predictionWindowSeconds outcomes { id title totalPoints totalUsers }'
     const response = await fetch('https://gql.twitch.tv/gql', {
       method: 'POST',
       headers: {
@@ -273,36 +285,64 @@ export class TwitchConnector implements ChatConnector {
       },
       body: JSON.stringify({
         query:
-          'query($id: ID!) { channel(id: $id) { pinnedChatMessages { edges { node { endsAt pinnedMessage { id content { text fragments { text content { __typename ... on Emote { emoteID: id } } } } sender { id login displayName chatColor } } } } } } }',
+          `query($id: ID!) { channel(id: $id) { pinnedChatMessages { edges { node { endsAt pinnedMessage { id content { text fragments { text content { __typename ... on Emote { emoteID: id } } } } sender { id login displayName chatColor } } } } } activePredictionEvents { ${prediction} } lockedPredictionEvents { ${prediction} } } }`,
         variables: { id },
       }),
     })
     if (!response.ok) {
-      throw new Error(`pinned: ${response.status}`)
+      throw new Error(`channel state: ${response.status}`)
     }
-    const parsed = PinnedResponseSchema(await response.json())
+    const parsed = ChannelStateResponseSchema(await response.json())
     if (parsed instanceof type.errors) {
-      throw new Error(`pinned: ${parsed.summary}`)
+      throw new Error(`channel state: ${parsed.summary}`)
     }
-    const node = parsed.data.channel?.pinnedChatMessages?.edges?.[0]?.node
-    if (!node) return null
-    const message = node.pinnedMessage
-    const emotes = (message.content.fragments ?? []).flatMap((f) =>
-      f.content?.emoteID ? [twitchEmote(f.content.emoteID, f.text)] : []
-    )
-    this.log(LogLevel.VERBOSE, `Pinned in ${channel}: ${message.content.text}`)
-    return twitchPin(
-      {
-        id: message.sender.id,
-        login: message.sender.login,
-        displayName: message.sender.displayName,
-        color: message.sender.chatColor,
-      },
-      message.content.text,
-      emotes,
-      message.id,
-      node.endsAt,
-    )
+    const state = parsed.data.channel
+    const p = state?.activePredictionEvents?.[0] ??
+      state?.lockedPredictionEvents?.[0]
+    const node = state?.pinnedChatMessages?.edges?.[0]?.node
+    const message = node?.pinnedMessage
+    if (message) {
+      this.log(
+        LogLevel.VERBOSE,
+        `Pinned in ${channel}: ${message.content.text}`,
+      )
+    }
+    return {
+      pin: message
+        ? twitchPin(
+          {
+            id: message.sender.id,
+            login: message.sender.login,
+            displayName: message.sender.displayName,
+            color: message.sender.chatColor,
+          },
+          message.content.text,
+          (message.content.fragments ?? []).flatMap((f) =>
+            f.content?.emoteID ? [twitchEmote(f.content.emoteID, f.text)] : []
+          ),
+          message.id,
+          node.endsAt,
+        )
+        : null,
+      // PubSub's shape, so both take the same way to open, locked and the end time
+      prediction: p
+        ? predictionFromPubSub({
+          event: {
+            id: p.id,
+            title: p.title,
+            status: p.status,
+            created_at: p.createdAt,
+            prediction_window_seconds: p.predictionWindowSeconds,
+            outcomes: p.outcomes.map((o) => ({
+              id: o.id,
+              title: o.title,
+              total_points: o.totalPoints,
+              total_users: o.totalUsers,
+            })),
+          },
+        })
+        : null,
+    }
   }
 
   disconnect(channelOrig: string): void {
