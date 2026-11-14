@@ -79,3 +79,65 @@ Deno.test('kick host event becomes a raid notice', () => {
   assertEquals(msg.notice?.kind, 'raid')
   assertEquals(msg.notice?.params, { displayName: 'Eve', viewerCount: '15' })
 })
+
+Deno.test('kick pins and polls reach live subscribers as state', () => {
+  const c = connector()
+  const events: ChatEvent[] = []
+  const unsubscribe = subscribe(
+    toChatId('kick', 'chan' as ChannelName),
+    (e) => events.push(e),
+  )
+  c.handleMessage(
+    frame('App\\Events\\PinnedMessageCreatedEvent', {
+      message: {
+        id: 'm1',
+        chatroom_id: 42,
+        content: 'hi [emote:1:KEKW]',
+        type: 'message',
+        created_at: '2026-11-14T00:00:00Z',
+        sender: {
+          id: 7,
+          username: 'Eve',
+          slug: 'eve',
+          identity: { color: '#ff0000', badges: [] },
+        },
+      },
+      duration: 0,
+    }),
+  )
+  c.handleMessage(
+    frame('App\\Events\\PollUpdateEvent', {
+      poll: {
+        title: 'Map?',
+        options: [{ id: 1, label: 'A', votes: 3 }, {
+          id: 2,
+          label: 'B',
+          votes: 1,
+        }],
+        duration: 60,
+        remaining: 0,
+        result_display_duration: 15,
+        has_voted: false,
+        voted_option_id: null,
+      },
+    }),
+  )
+  c.handleMessage(frame('App\\Events\\PinnedMessageDeletedEvent', {}))
+  unsubscribe()
+
+  assertEquals(events.map((e) => e.type), ['pin', 'poll', 'pin'])
+  const pin = events[0].type === 'pin' ? events[0].pin : null
+  assertEquals([pin?.id, pin?.user.displayName, pin?.text, pin?.endsAtMs], [
+    'm1',
+    'Eve',
+    'hi [emote:1:KEKW]',
+    undefined,
+  ])
+  const poll = events[1].type === 'poll' ? events[1].poll : null
+  assertEquals(poll?.choices, [{ title: 'A', votes: 3 }, {
+    title: 'B',
+    votes: 1,
+  }])
+  assertEquals(poll?.ended, true)
+  assertEquals(events[2].type === 'pin' && events[2].pin, null)
+})

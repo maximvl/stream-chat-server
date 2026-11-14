@@ -4,6 +4,8 @@ import {
   ChatConnector,
   ChatEmote,
   ChatMessage,
+  ChatPin,
+  ChatPoll,
   ChatUser,
   ConnectorStatus,
   MessageId,
@@ -14,16 +16,23 @@ import * as cheerio from 'cheerio'
 import {
   AppConfig,
   ChannelInfoResponse,
+  ContentData,
+  PinnedMessage,
+  PinnedMessageResponse,
+  PollResponse,
+  StreamPoll,
   VkColorsMap,
   WsChatMessage,
   WsErrorMessage,
+  WsPush,
   WsSubscribeMessage,
 } from './schemas.ts'
 import { type } from 'arktype'
 import { CHANNEL_INACTIVITY_TIMEOUT_MINUTES, LogLevel } from '../../config.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
-import { normalizeChannel } from '../utils.ts'
+import { normalizeChannel, toChatId } from '../utils.ts'
+import { forgetState, setPin, setPoll } from '../chatEvents.ts'
 import { httpsOnly } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
@@ -190,6 +199,14 @@ export class VkVideoConnector implements ChatConnector {
       return
     }
 
+    const push = WsPush(jsonData)
+    if (
+      !(push instanceof type.errors) && push.push.pub.data.type !== 'message'
+    ) {
+      this.handleStatePush(push)
+      return
+    }
+
     const chatMsg = WsChatMessage(jsonData)
     if (chatMsg instanceof type.errors) {
       this.log(
@@ -217,46 +234,7 @@ export class VkVideoConnector implements ChatConnector {
       return
     }
 
-    const mentions: VkMessageFields['mentions'] = []
-    const messageParts: string[] = []
-    const emotes: ChatEmote[] = []
-
-    for (const content of data.data) {
-      if (!('type' in content)) {
-        continue
-      }
-      switch (content.type) {
-        case 'mention':
-          mentions.push({
-            id: content.id,
-            displayName: content.displayName,
-          })
-          // VK sends the mentioned nick only as this part, so put it back into the text
-          messageParts.push(`@${content.displayName}`)
-          break
-        case 'text':
-          try {
-            const parsed = JSON.parse(content.content)
-            if (
-              Array.isArray(parsed) && parsed.length > 0 &&
-              typeof parsed[0] === 'string'
-            ) {
-              messageParts.push(parsed[0])
-            }
-          } catch {
-            // Ignore non-JSON content
-          }
-          break
-        case 'smile':
-          // Kept as its name in the text, like Twitch emotes, so clients can swap it for the image
-          messageParts.push(content.name)
-          emotes.push({
-            id: content.id,
-            name: content.name,
-            imageUrl: content.largeUrl,
-          })
-      }
-    }
+    const { text, emotes, mentions } = parseContent(data.data)
 
     // The picture by id answers VK's placeholder for users without an avatar
     const avatarUrl = httpsOnly(data.author.avatarUrl) ||
@@ -279,7 +257,7 @@ export class VkVideoConnector implements ChatConnector {
       id: data.id.toString() as MessageId,
       user: msgUser,
       timestampMs: data.createdAt * 1000,
-      text: messageParts.join(' '),
+      text,
       server: 'vkvideo',
       channel,
       emotes,
@@ -355,6 +333,10 @@ export class VkVideoConnector implements ChatConnector {
         channel: channelId,
       },
     })
+    const infoId = infoChannel(channelId)
+    this.reverseChannelsMap.set(infoId, channel)
+    this.send({ id: this.messageCounter++, subscribe: { channel: infoId } })
+    this.fetchPinPoll(channel)
   }
 
   disconnect(channelOrig: string) {
@@ -372,6 +354,57 @@ export class VkVideoConnector implements ChatConnector {
         channel: channelId,
       },
     })
+    this.send({
+      id: this.messageCounter++,
+      unsubscribe: { channel: infoChannel(channelId) },
+    })
+    forgetState(toChatId('vkvideo', channel))
+  }
+
+  // Pinned message on the chat channel, the stream's poll on the info channel
+  handleStatePush(push: typeof WsPush.infer) {
+    const channel = this.reverseChannelsMap.get(
+      push.push.channel as InternalChannelId,
+    )
+    if (!channel) return
+    const chatId = toChatId('vkvideo', channel)
+    const { type: kind, data } = push.push.pub.data
+    switch (kind) {
+      case 'chat_pinned_message_pin':
+      case 'chat_pinned_message_edit':
+        setPin(chatId, vkPin(data))
+        break
+      case 'chat_pinned_message_unpin':
+        setPin(chatId, null)
+        break
+      case 'poll':
+        setPoll(chatId, vkPoll(data))
+    }
+  }
+
+  // The pin and poll already up when the channel is joined; later changes come from the socket
+  async fetchPinPoll(channel: ChannelName) {
+    const chatId = toChatId('vkvideo', channel)
+    const base =
+      `https://api.live.vkvideo.ru/v1/channel/${channel}/stream/slot/default`
+    try {
+      const response = await fetch(`${base}/chat/pinned_message`)
+      const pinned = PinnedMessageResponse(await response.json())
+      if (!(pinned instanceof type.errors)) {
+        setPin(chatId, vkPin(pinned.data.pinnedMessage))
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
+    }
+    try {
+      const response = await fetch(`${base}/poll`)
+      const poll = PollResponse(await response.json())
+      if (!(poll instanceof type.errors)) {
+        setPoll(chatId, vkPoll(poll.data.poll))
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
+    }
   }
 
   cleanup(): void {
@@ -516,5 +549,100 @@ export class VkVideoConnector implements ChatConnector {
     }
 
     return status
+  }
+}
+
+const infoChannel = (chatChannel: InternalChannelId) =>
+  chatChannel.replace('channel-chat:', 'channel-info:') as InternalChannelId
+
+// Text with mentions and smiles put back in place, smiles also listed as emotes
+function parseContent(parts: (typeof ContentData.infer)[]) {
+  const mentions: VkMessageFields['mentions'] = []
+  const messageParts: string[] = []
+  const emotes: ChatEmote[] = []
+
+  for (const content of parts) {
+    if (!('type' in content)) {
+      continue
+    }
+    switch (content.type) {
+      case 'mention':
+        mentions.push({
+          id: content.id,
+          displayName: content.displayName,
+        })
+        // VK sends the mentioned nick only as this part, so put it back into the text
+        messageParts.push(`@${content.displayName}`)
+        break
+      case 'text':
+        try {
+          const parsed = JSON.parse(content.content)
+          if (
+            Array.isArray(parsed) && parsed.length > 0 &&
+            typeof parsed[0] === 'string'
+          ) {
+            messageParts.push(parsed[0])
+          }
+        } catch {
+          // Ignore non-JSON content
+        }
+        break
+      case 'smile':
+        // Kept as its name in the text, like Twitch emotes, so clients can swap it for the image
+        messageParts.push(content.name)
+        emotes.push({
+          id: content.id,
+          name: content.name,
+          imageUrl: content.largeUrl,
+        })
+    }
+  }
+  return { text: messageParts.join(' '), emotes, mentions }
+}
+
+// The WebSocket sends the message itself, the REST API wraps it as pinnedMessage
+function vkPin(raw: unknown): ChatPin | null {
+  const pin = PinnedMessage(
+    (raw as { pinnedMessage?: unknown } | null)?.pinnedMessage ?? raw,
+  )
+  if (pin instanceof type.errors) return null
+  const { text, emotes } = parseContent(pin.data)
+  const author = pin.author
+  return {
+    id: String(pin.id),
+    user: {
+      id: String(author.id) as UserId,
+      displayName: author.displayName,
+      avatarUrl: httpsOnly(author.avatarUrl) ||
+        `https://images.live.vkvideo.ru/user/${author.id}/avatar`,
+      vkFields: {
+        nickColor: author.nickColor,
+        isChatModerator: false,
+        isChannelModerator: false,
+        roles: [],
+        badges: [],
+        color: VkColorsMap[author.nickColor],
+      },
+    },
+    text,
+    emotes,
+  }
+}
+
+function vkPoll(raw: unknown): ChatPoll | null {
+  const poll = StreamPoll(raw)
+  if (poll instanceof type.errors || poll.state === 'canceled') return null
+  const ended = poll.state === 'ended'
+  return {
+    id: String(poll.id),
+    title: poll.title,
+    choices: poll.decisions.map((d) => ({
+      title: d.name,
+      votes: d.votesCount,
+    })),
+    ...(!ended && poll.createdAt && poll.duration && {
+      endsAtMs: (poll.createdAt + poll.duration) * 1000,
+    }),
+    ended,
   }
 }

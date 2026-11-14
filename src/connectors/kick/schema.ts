@@ -68,6 +68,41 @@ export const StreamHostData = type({
   'optional_message?': 'string | null',
 })
 
+// Pinned message and poll changes; also on the chatroom channel
+export const WsPinPollEvent = type({
+  event:
+    '"App\\Events\\PinnedMessageCreatedEvent" | "App\\Events\\PinnedMessageDeletedEvent" | "App\\Events\\PollUpdateEvent" | "App\\Events\\PollDeleteEvent"',
+  data: 'string',
+  channel: 'string',
+})
+
+// PinnedMessageCreatedEvent, and pinned_message of /api/v2/channels/<channel>/chatroom
+export const PinnedMessageData = type({
+  message: {
+    id: 'string',
+    content: 'string',
+    sender: {
+      id: 'number',
+      username: 'string',
+      'identity?': { 'color?': 'string' },
+    },
+  },
+  // Seconds; absent or 0 when it stays until unpinned
+  'duration?': 'number | string | null',
+})
+
+// PollUpdateEvent's poll, and data (or data.poll) of /api/v2/channels/<channel>/polls
+export const PollData = type({
+  title: 'string',
+  options: type({ id: 'number', label: 'string', votes: 'number' }).array(),
+  // Seconds left; 0 once it ended and shows its results
+  remaining: 'number',
+  'created_at?': 'string',
+})
+
+export const ChatroomResponse = type({ 'pinned_message?': 'unknown' })
+export const PollResponse = type({ 'data?': 'unknown' })
+
 export const MessageDeletedData = type({ message: { id: 'string' } })
 export const UserBannedData = type({ user: { id: 'number | string' } })
 

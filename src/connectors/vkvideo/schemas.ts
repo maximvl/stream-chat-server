@@ -85,7 +85,7 @@ const ContentDataSmile = type({
 
 const ContentIgnore = type({})
 
-const ContentData = ContentDataMention.or(ContentDataText).or(
+export const ContentData = ContentDataMention.or(ContentDataText).or(
   ContentDataSmile,
 ).or(ContentIgnore)
 
@@ -105,6 +105,42 @@ export const WsChatMessage = type({
     }),
   }),
 })
+
+// Any push; pins arrive on channel-chat:<id>, polls on channel-info:<id>
+export const WsPush = type({
+  push: type({
+    channel: 'string',
+    pub: type({ data: type({ type: 'string', 'data?': 'unknown' }) }),
+  }),
+})
+
+// A pinned chat message: the author and parts of a chat message, without the chat roles
+export const PinnedMessage = type({
+  id: 'number',
+  author: type({
+    id: 'number',
+    displayName: 'string',
+    'avatarUrl?': 'string',
+    nickColor: 'number',
+  }),
+  data: ContentData.array(),
+})
+
+// The stream's poll; createdAt and duration in seconds
+export const StreamPoll = type({
+  id: 'number | string',
+  title: 'string',
+  state: 'string',
+  'createdAt?': 'number',
+  'duration?': 'number | null',
+  decisions: type({ name: 'string', votesCount: 'number' }).array(),
+})
+
+// /v1/channel/<blog>/stream/slot/default/chat/pinned_message and .../poll
+export const PinnedMessageResponse = type({
+  data: { pinnedMessage: 'unknown' },
+})
+export const PollResponse = type({ data: { poll: 'unknown' } })
 
 export const VkColorsMap: Record<number, string> = {
   0: '#D66E34',

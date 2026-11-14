@@ -9,7 +9,7 @@ import {
   TRUSTED_PROXIES,
 } from '../config.ts'
 import { ChannelName, ChatMessage } from '../connectors/types.ts'
-import { subscribe } from '../connectors/chatEvents.ts'
+import { chatState, subscribe } from '../connectors/chatEvents.ts'
 import { normalizeChannel, toChatId } from '../connectors/utils.ts'
 import {
   AvatarsRequest,
@@ -168,7 +168,12 @@ function noticeFilter(url: URL): (message: ChatMessage) => boolean {
     : (message) => !message.notice
 }
 
-// Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear'} events of one chat
+// Pins and polls (types 'pin' and 'poll') are opt-in with pins=1: older clients treat an unknown event as a clear
+function wantsState(url: URL): boolean {
+  return url.searchParams.get('pins') === '1'
+}
+
+// Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear' | 'pin' | 'poll'} events of one chat
 function chat_stream(req: Request, ip: string): Promise<Response> {
   const url = new URL(req.url)
   const params = ChatStatusRequest({
@@ -197,6 +202,7 @@ function chat_stream(req: Request, ip: string): Promise<Response> {
   const channel = normalizeChannel(params.channel)
   const encoder = new TextEncoder()
   const keep = noticeFilter(url)
+  const state = wantsState(url)
   let cleanup = () => {}
 
   const body = new ReadableStream<Uint8Array>({
@@ -212,6 +218,7 @@ function chat_stream(req: Request, ip: string): Promise<Response> {
         toChatId(params.server, channel),
         (event) => {
           if (event.type === 'message' && !keep(event.message)) return
+          if ((event.type === 'pin' || event.type === 'poll') && !state) return
           send(`data: ${JSON.stringify(event)}\n\n`)
         },
       )
@@ -227,6 +234,11 @@ function chat_stream(req: Request, ip: string): Promise<Response> {
       }
       // EventSource waits this long before reconnecting after a drop
       send('retry: 3000\n\n')
+      if (state) {
+        for (const event of chatState(toChatId(params.server, channel))) {
+          send(`data: ${JSON.stringify(event)}\n\n`)
+        }
+      }
       keepAlive()
       const timer = setInterval(keepAlive, STREAM_KEEPALIVE_MS)
       const forget = AppState.clients.streamOpened(

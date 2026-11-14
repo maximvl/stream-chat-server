@@ -25,6 +25,7 @@ import {
   BadgeResponseSchema,
   BadgeVersion,
   CheermotesResponseSchema,
+  PinnedResponseSchema,
   RewardsResponseSchema,
   UserResponseSchema,
 } from './schemas.ts'
@@ -52,6 +53,16 @@ type ChannelReward = {
 type CheerTier = { minBits: number; color: string; imageUrl: string }
 type Cheermotes = Map<string, CheerTier[]>
 import { type } from 'arktype'
+import {
+  endsAtMs,
+  pinFromPubSub,
+  PinUpdate,
+  pollFromPubSub,
+  twitchEmote,
+  twitchPin,
+  TwitchPubSub,
+} from './pubsub.ts'
+import { currentPin, forgetState, setPin, setPoll } from '../chatEvents.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
 import { AvatarCache } from '../avatars.ts'
@@ -85,6 +96,9 @@ export class TwitchConnector implements ChatConnector {
   reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
 
   broadcasterByChannel: Map<ChannelName, BoardcasterId> = new Map()
+  channelByBroadcaster: Map<string, ChannelName> = new Map()
+  // Created with the first channel, for pins and polls
+  pubsub: TwitchPubSub | null = null
 
   globalBadges: Map<string, Map<string, BadgeVersion>> = new Map()
   badgesByChannel: Map<ChannelName, Map<string, Map<string, BadgeVersion>>> =
@@ -188,6 +202,97 @@ export class TwitchConnector implements ChatConnector {
     this.reverseChannelsMap.set(channelId, channelLower)
 
     this.websocketSend(`JOIN ${channelId}`)
+    this.watchPinPoll(channelLower)
+  }
+
+  // Pinned message and poll from PubSub, plus the pin already up from GQL
+  async watchPinPoll(channel: ChannelName) {
+    let id: string
+    try {
+      id = await this.fetch_broadcaster_id(channel)
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `No broadcaster id for pins: ${error}`)
+      return
+    }
+    this.channelByBroadcaster.set(id, channel)
+    this.pubsub ??= new TwitchPubSub((topic, message) =>
+      this.handlePubSub(topic, message)
+    )
+    this.pubsub.listen([`pinned-chat-updates-v1.${id}`, `polls.${id}`])
+    this.fetch_pinned(channel, id)
+      .then((pin) => pin && setPin(toChatId('twitch', channel), pin))
+      .catch((error) =>
+        this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
+      )
+  }
+
+  handlePubSub(topic: string, message: unknown) {
+    const [name, id] = topic.split('.')
+    const channel = this.channelByBroadcaster.get(id)
+    if (!channel) return
+    const chatId = toChatId('twitch', channel)
+    const { type: kind, data } = (message ?? {}) as {
+      type?: string
+      data?: unknown
+    }
+    if (name === 'polls') {
+      setPoll(chatId, pollFromPubSub(data))
+    } else if (kind === 'pin-message') {
+      setPin(chatId, pinFromPubSub(data))
+    } else if (kind === 'unpin-message') {
+      setPin(chatId, null)
+    } else if (kind === 'update-message') {
+      // One pin per channel: a new end time for it
+      const pin = currentPin(chatId)
+      const update = PinUpdate(data)
+      if (pin && !(update instanceof type.errors)) {
+        const ends = endsAtMs(update.ends_at)
+        const { endsAtMs: _, ...rest } = pin
+        setPin(chatId, ends ? { ...rest, endsAtMs: ends } : rest)
+      }
+    }
+  }
+
+  // The pin already up when the channel is joined, from Twitch's public web GQL like the rewards
+  async fetch_pinned(channel: ChannelName, id: string) {
+    const response = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: {
+        'Client-Id': TWITCH_WEB_CLIENT_ID,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query:
+          'query($id: ID!) { channel(id: $id) { pinnedChatMessages { edges { node { endsAt pinnedMessage { id content { text fragments { text content { __typename ... on Emote { emoteID: id } } } } sender { id login displayName chatColor } } } } } } }',
+        variables: { id },
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`pinned: ${response.status}`)
+    }
+    const parsed = PinnedResponseSchema(await response.json())
+    if (parsed instanceof type.errors) {
+      throw new Error(`pinned: ${parsed.summary}`)
+    }
+    const node = parsed.data.channel?.pinnedChatMessages?.edges?.[0]?.node
+    if (!node) return null
+    const message = node.pinnedMessage
+    const emotes = (message.content.fragments ?? []).flatMap((f) =>
+      f.content?.emoteID ? [twitchEmote(f.content.emoteID, f.text)] : []
+    )
+    this.log(LogLevel.VERBOSE, `Pinned in ${channel}: ${message.content.text}`)
+    return twitchPin(
+      {
+        id: message.sender.id,
+        login: message.sender.login,
+        displayName: message.sender.displayName,
+        color: message.sender.chatColor,
+      },
+      message.content.text,
+      emotes,
+      message.id,
+      node.endsAt,
+    )
   }
 
   disconnect(channelOrig: string): void {
@@ -199,6 +304,12 @@ export class TwitchConnector implements ChatConnector {
     }
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
+    const id = this.broadcasterByChannel.get(channel)
+    if (id) {
+      this.pubsub?.unlisten([`pinned-chat-updates-v1.${id}`, `polls.${id}`])
+      this.channelByBroadcaster.delete(id)
+    }
+    forgetState(toChatId('twitch', channel))
   }
 
   websocketSend(message: string) {

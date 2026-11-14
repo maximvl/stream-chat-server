@@ -4,6 +4,8 @@ import {
   ChannelStatus,
   ChatConnector,
   ChatMessage,
+  ChatPin,
+  ChatPoll,
   ChatUser,
   ConnectorStatus,
   KickBadge,
@@ -13,7 +15,11 @@ import {
 import { myLog, sleep } from '../../utils.ts'
 import {
   ChannelInfoResponse,
+  ChatroomResponse,
   MessageDeletedData,
+  PinnedMessageData,
+  PollData,
+  PollResponse,
   RealtimeConnectionResponse,
   StreamHostData,
   UserBannedData,
@@ -22,13 +28,14 @@ import {
   WsChatMsgData,
   WsHostEvent,
   WsModerationEvent,
+  WsPinPollEvent,
   WsPong,
   WsSubscribed,
 } from './schema.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
-import { emit } from '../chatEvents.ts'
+import { emit, forgetState, setPin, setPoll } from '../chatEvents.ts'
 import { AvatarCache, lookupEach } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
@@ -195,6 +202,12 @@ export class KickConnector implements ChatConnector {
       return
     }
 
+    const pinPoll = WsPinPollEvent(jsonData)
+    if (!(pinPoll instanceof type.errors)) {
+      this.handlePinPoll(pinPoll)
+      return
+    }
+
     const host = WsHostEvent(jsonData)
     if (!(host instanceof type.errors)) {
       this.handleHost(host)
@@ -289,6 +302,64 @@ export class KickConnector implements ChatConnector {
       this.messages.set(channel, storage)
     }
     return storage
+  }
+
+  handlePinPoll(event: typeof WsPinPollEvent.infer) {
+    const channel = this.reverseChannelsMap.get(
+      event.channel as InternalChannelId,
+    )
+    if (!channel) {
+      return
+    }
+    const chatId = toChatId('kick', channel)
+    let data: unknown
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      this.log(LogLevel.DEBUG, `Bad pin/poll event data: ${event.data}`)
+      return
+    }
+    switch (event.event) {
+      case 'App\\Events\\PinnedMessageCreatedEvent':
+        setPin(chatId, kickPin(data))
+        break
+      case 'App\\Events\\PinnedMessageDeletedEvent':
+        setPin(chatId, null)
+        break
+      case 'App\\Events\\PollUpdateEvent':
+        setPoll(chatId, kickPoll((data as { poll?: unknown })?.poll))
+        break
+      case 'App\\Events\\PollDeleteEvent':
+        setPoll(chatId, null)
+    }
+  }
+
+  // The pin and poll already up when the channel is joined; later changes come from the socket
+  async fetchPinPoll(channel: ChannelName) {
+    const chatId = toChatId('kick', channel)
+    try {
+      const response = await fetch(
+        `https://kick.com/api/v2/channels/${channel}/chatroom`,
+      )
+      const chatroom = ChatroomResponse(await response.json())
+      if (!(chatroom instanceof type.errors) && chatroom.pinned_message) {
+        setPin(chatId, kickPin(chatroom.pinned_message))
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
+    }
+    try {
+      const response = await fetch(
+        `https://kick.com/api/v2/channels/${channel}/polls`,
+      )
+      const polls = PollResponse(await response.json())
+      if (!(polls instanceof type.errors) && polls.data) {
+        const data = polls.data as { poll?: unknown }
+        setPoll(chatId, kickPoll(data.poll ?? data))
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
+    }
   }
 
   // Kick's raid, as a notice in Twitch's shape: kind "raid" with displayName and viewerCount
@@ -428,6 +499,7 @@ export class KickConnector implements ChatConnector {
 
     this.channelsMap.set(channel, channelId)
     this.reverseChannelsMap.set(channelId, channel)
+    this.fetchPinPoll(channel)
 
     // Socket may have closed while fetching; status is then 'disconnected' and the next connect retries
     this.send({
@@ -499,6 +571,7 @@ export class KickConnector implements ChatConnector {
     const channel = normalizeChannel(channelOrig)
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
+    forgetState(toChatId('kick', channel))
 
     const channelId = this.channelsMap.get(channel)
     if (!channelId) {
@@ -608,5 +681,35 @@ export class KickConnector implements ChatConnector {
     }
 
     return status
+  }
+}
+
+function kickPin(raw: unknown): ChatPin | null {
+  const pin = PinnedMessageData(raw)
+  if (pin instanceof type.errors) return null
+  const sender = pin.message.sender
+  const duration = Number(pin.duration ?? 0)
+  return {
+    id: pin.message.id,
+    user: {
+      id: String(sender.id) as UserId,
+      displayName: sender.username,
+      kickFields: { color: sender.identity?.color ?? '', badges: [] },
+    },
+    text: pin.message.content,
+    ...(duration > 0 && { endsAtMs: Date.now() + duration * 1000 }),
+  }
+}
+
+function kickPoll(raw: unknown): ChatPoll | null {
+  const poll = PollData(raw)
+  if (poll instanceof type.errors) return null
+  return {
+    // Kick's poll has no id; one channel runs one poll at a time
+    id: poll.created_at ?? poll.title,
+    title: poll.title,
+    choices: poll.options.map((o) => ({ title: o.label, votes: o.votes })),
+    ...(poll.remaining > 0 && { endsAtMs: Date.now() + poll.remaining * 1000 }),
+    ended: poll.remaining <= 0,
   }
 }

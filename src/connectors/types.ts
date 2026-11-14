@@ -85,6 +85,24 @@ export type ChatNotice = {
   systemText: string
 }
 
+// The chat's pinned message: a chat line kept on top until unpinned or until endsAtMs
+export type ChatPin = {
+  id: string
+  user: ChatUser
+  text: string
+  emotes?: ChatEmote[]
+  endsAtMs?: number
+}
+
+// The platform's own poll; ended keeps the results on screen for a while
+export type ChatPoll = {
+  id: string
+  title: string
+  choices: { title: string; votes: number }[]
+  endsAtMs?: number
+  ended: boolean
+}
+
 export type TwitchBadge = {
   id: string
   // Badge set: "moderator", "vip", "subscriber"... (id is the version inside it)

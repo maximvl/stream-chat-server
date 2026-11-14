@@ -58,5 +58,36 @@ export const RewardsResponseSchema = type({
   },
 })
 
+// channel.pinnedChatMessages of Twitch's web GQL
+export const PinnedResponseSchema = type({
+  data: {
+    channel: type({
+      'pinnedChatMessages?': type({
+        'edges?': type({
+          node: {
+            'endsAt?': 'string | null',
+            pinnedMessage: {
+              id: 'string',
+              content: {
+                text: 'string',
+                'fragments?': type({
+                  text: 'string',
+                  'content?': type({ 'emoteID?': 'string' }).or('null'),
+                }).array().or('null'),
+              },
+              sender: {
+                id: 'string',
+                login: 'string',
+                displayName: 'string',
+                'chatColor?': 'string | null',
+              },
+            },
+          },
+        }).array().or('null'),
+      }).or('null'),
+    }).or('null'),
+  },
+})
+
 export type BadgeVersion =
   (typeof BadgeResponseSchema.infer)['data'][number]['versions'][number]

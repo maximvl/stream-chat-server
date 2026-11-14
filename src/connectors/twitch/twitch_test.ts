@@ -433,3 +433,130 @@ Deno.test('twitch avatars: validates ids, caches hits and misses, answers 502 wi
     AppState.connectors.delete('twitch')
   }
 })
+
+Deno.test('twitch pins and polls from PubSub become chat state', () => {
+  const c = connector()
+  c.channelByBroadcaster = new Map([['42', 'chan' as ChannelName]])
+  const events: ChatEvent[] = []
+  const unsubscribe = subscribe(
+    toChatId('twitch', 'chan' as ChannelName),
+    (e) => events.push(e),
+  )
+  c.handlePubSub('pinned-chat-updates-v1.42', {
+    type: 'pin-message',
+    data: {
+      id: 'pin1',
+      pinned_by: { id: '1', display_name: 'Mod' },
+      message: {
+        id: 'msg1',
+        sender: {
+          user_id: '7',
+          login: 'eve',
+          display_name: 'Eve',
+          chat_color: '#00FF00',
+          badges: [],
+        },
+        content: {
+          text: 'hello Kappa',
+          fragments: [{ text: 'hello ' }, {
+            text: 'Kappa',
+            emoticon: { emoticon_id: '25', emoticon_set_id: '0' },
+          }],
+        },
+        type: 'MOD',
+        ends_at: null,
+      },
+    },
+  })
+  c.handlePubSub('pinned-chat-updates-v1.42', {
+    type: 'update-message',
+    data: { id: 'pin1', ends_at: 2_000_000_000 },
+  })
+  c.handlePubSub('polls.42', {
+    type: 'POLL_UPDATE',
+    data: {
+      poll: {
+        poll_id: 'p1',
+        title: 'Map?',
+        status: 'ACTIVE',
+        choices: [{ choice_id: 'c1', title: 'A', votes: { total: 4 } }],
+        remaining_duration_milliseconds: 30_000,
+      },
+    },
+  })
+  c.handlePubSub('polls.42', {
+    type: 'POLL_ARCHIVE',
+    data: {
+      poll: {
+        poll_id: 'p1',
+        title: 'Map?',
+        status: 'ARCHIVED',
+        choices: [],
+      },
+    },
+  })
+  c.handlePubSub('pinned-chat-updates-v1.42', {
+    type: 'unpin-message',
+    data: { id: 'pin1' },
+  })
+  // Another channel's topic is ignored
+  c.handlePubSub('polls.99', { type: 'POLL_UPDATE', data: {} })
+  unsubscribe()
+
+  assertEquals(events.map((e) => e.type), ['pin', 'pin', 'poll', 'poll', 'pin'])
+  const pin = events[0].type === 'pin' ? events[0].pin : null
+  assertEquals(pin?.text, 'hello Kappa')
+  assertEquals(pin?.user.displayName, 'Eve')
+  assertEquals(pin?.user.twitchFields?.color, '#00FF00')
+  assertEquals(pin?.emotes?.map((e) => [e.id, e.name]), [['25', 'Kappa']])
+  assertEquals(pin?.endsAtMs, undefined)
+  const updated = events[1].type === 'pin' ? events[1].pin : null
+  assertEquals(updated?.endsAtMs, 2_000_000_000_000)
+  const poll = events[2].type === 'poll' ? events[2].poll : null
+  assertEquals([poll?.title, poll?.ended, poll?.choices], ['Map?', false, [{
+    title: 'A',
+    votes: 4,
+  }]])
+  assertEquals(events[3].type === 'poll' && events[3].poll, null)
+  assertEquals(events[4].type === 'pin' && events[4].pin, null)
+})
+
+Deno.test('chat stream sends the current pin and poll only to pins=1 clients', async () => {
+  const { setPin, setPoll } = await import('../chatEvents.ts')
+  const chatId = toChatId('twitch', 'statechan' as ChannelName)
+  setPoll(chatId, { id: 'p', title: 'Q', choices: [], ended: false })
+  setPin(chatId, {
+    id: 'x',
+    user: { id: 'u' as never, displayName: 'U' },
+    text: 'pinned',
+  })
+  const c = connector()
+  c.connect = () => Promise.resolve()
+  c.getMessages = () => []
+  AppState.connectors.set('twitch', c)
+  const read = async (query: string) => {
+    const response = await main_handler(
+      new Request(
+        `http://x/api/chat_stream?server=twitch&channel=statechan${query}`,
+      ),
+      { remoteAddr: { hostname: '127.0.0.1' } } as never,
+    )
+    const reader = response.body!.getReader()
+    // One chunk per event; the keep-alive ping is the last one sent on open
+    let text = ''
+    while (!text.includes('event: ping')) {
+      const { value, done } = await reader.read()
+      if (done) break
+      text += new TextDecoder().decode(value)
+    }
+    await reader.cancel()
+    return text
+  }
+  const withState = await read('&pins=1')
+  const without = await read('')
+  setPin(chatId, null)
+  setPoll(chatId, null)
+  assertEquals(withState.includes('"type":"pin"'), true)
+  assertEquals(withState.includes('"type":"poll"'), true)
+  assertEquals(without.includes('"type":"pin"'), false)
+})
