@@ -26,6 +26,24 @@ Deno.test('avatar cache keeps hits and misses, asks failed keys again and drops 
   assertEquals(asked, [['bob', 'ghost', 'down', 'plain'], ['down']])
 })
 
+Deno.test('avatar cache asks the platform once for keys two requests want at the same time', async () => {
+  const cache = new AvatarCache()
+  const asked: string[][] = []
+  const lookup = async (missing: string[]) => {
+    asked.push(missing)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    return new Map(missing.map((key) => [key, `https://x/${key}.png`]))
+  }
+  const [stream, reader] = await Promise.all([
+    cache.get(['ann', 'bob'], lookup),
+    cache.get(['bob', 'cat'], lookup),
+  ])
+  assertEquals(stream, { ann: 'https://x/ann.png', bob: 'https://x/bob.png' })
+  assertEquals(reader, { bob: 'https://x/bob.png', cat: 'https://x/cat.png' })
+  assertEquals(asked, [['ann', 'bob'], ['cat']])
+  assertEquals(cache.pending.size, 0)
+})
+
 Deno.test('kick avatars are looked up by user id through the username seen in chat', async () => {
   const c = Object.assign(Object.create(KickConnector.prototype), {
     avatars: new AvatarCache(),

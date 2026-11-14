@@ -11,6 +11,8 @@ export function httpsOnly(url: string | null | undefined): string {
 // Profile image url by user key, '' for a user the platform doesn't know; oldest first
 export class AvatarCache {
   entries: Map<string, { url: string; expiresAt: number }> = new Map()
+  // Keys being looked up now: the stream and the reader of one chat ask for the same new chatters at once
+  pending: Map<string, Promise<Map<string, string>>> = new Map()
 
   // lookup answers a url or '' per key; keys it leaves out failed and are asked
   // again next time. Throws when nothing was answered, so nothing is cached.
@@ -21,27 +23,52 @@ export class AvatarCache {
     const now = Date.now()
     const result: Record<string, string> = {}
     const missing: string[] = []
+    const others: [string, Promise<Map<string, string>>][] = []
     for (const key of keys) {
       const cached = this.entries.get(key)
-      if (!cached || cached.expiresAt <= now) missing.push(key)
-      else if (cached.url) result[key] = cached.url
+      const pending = this.pending.get(key)
+      if (cached && cached.expiresAt > now) {
+        if (cached.url) result[key] = cached.url
+      } else if (pending) others.push([key, pending])
+      else missing.push(key)
     }
-    if (missing.length === 0) return result
+    if (missing.length === 0 && others.length === 0) return result
 
-    const found = await lookup(missing)
-    if (found.size === 0) throw new Error('No avatar lookup succeeded')
-    const expiresAt = now + AVATAR_TTL_MS
-    for (const [key, rawUrl] of found) {
-      const url = httpsOnly(rawUrl)
-      // Re-inserted so the Map stays ordered oldest first for the size cap
-      this.entries.delete(key)
-      this.entries.set(key, { url, expiresAt })
+    let answered = false
+    if (missing.length) {
+      const run = lookup(missing)
+      for (const key of missing) this.pending.set(key, run)
+      let found: Map<string, string>
+      try {
+        found = await run
+      } finally {
+        for (const key of missing) {
+          if (this.pending.get(key) === run) this.pending.delete(key)
+        }
+      }
+      answered = found.size > 0
+      const expiresAt = now + AVATAR_TTL_MS
+      for (const [key, rawUrl] of found) {
+        const url = httpsOnly(rawUrl)
+        // Re-inserted so the Map stays ordered oldest first for the size cap
+        this.entries.delete(key)
+        this.entries.set(key, { url, expiresAt })
+        if (url) result[key] = url
+      }
+      for (const key of this.entries.keys()) {
+        if (this.entries.size <= MAX_AVATARS) break
+        this.entries.delete(key)
+      }
+    }
+    // Keys another request was looking up: its answer, which that request cached
+    for (const [key, pending] of others) {
+      const found = await pending.catch(() => undefined)
+      if (!found?.has(key)) continue
+      answered = true
+      const url = httpsOnly(found.get(key))
       if (url) result[key] = url
     }
-    for (const key of this.entries.keys()) {
-      if (this.entries.size <= MAX_AVATARS) break
-      this.entries.delete(key)
-    }
+    if (!answered) throw new Error('No avatar lookup succeeded')
     return result
   }
 }
