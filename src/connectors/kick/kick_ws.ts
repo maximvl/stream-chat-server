@@ -6,6 +6,7 @@ import {
   ChatMessage,
   ChatPin,
   ChatPoll,
+  ChatPrediction,
   ChatUser,
   ConnectorStatus,
   KickBadge,
@@ -20,6 +21,7 @@ import {
   PinnedMessageData,
   PollData,
   PollResponse,
+  PredictionData,
   RealtimeConnectionResponse,
   StreamHostData,
   UserBannedData,
@@ -30,12 +32,19 @@ import {
   WsModerationEvent,
   WsPinPollEvent,
   WsPong,
+  WsPredictionEvent,
   WsSubscribed,
 } from './schema.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
-import { emit, forgetState, setPin, setPoll } from '../chatEvents.ts'
+import {
+  emit,
+  forgetState,
+  setPin,
+  setPoll,
+  setPrediction,
+} from '../chatEvents.ts'
 import { AvatarCache, lookupEach } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
@@ -49,6 +58,7 @@ export class KickConnector implements ChatConnector {
 
   channelsMap: Map<ChannelName, InternalChannelId> = new Map()
   reverseChannelsMap: Map<InternalChannelId, ChannelName> = new Map()
+  predictionChannels: Map<ChannelName, InternalChannelId> = new Map()
 
   messages: Map<ChannelName, MessageStorage> = new Map()
 
@@ -199,6 +209,25 @@ export class KickConnector implements ChatConnector {
     const moderation = WsModerationEvent(jsonData)
     if (!(moderation instanceof type.errors)) {
       this.handleModeration(moderation)
+      return
+    }
+
+    const prediction = WsPredictionEvent(jsonData)
+    if (!(prediction instanceof type.errors)) {
+      const channel = this.reverseChannelsMap.get(
+        prediction.channel as InternalChannelId,
+      )
+      if (channel) {
+        try {
+          const data = JSON.parse(prediction.data) as { prediction?: unknown }
+          setPrediction(
+            toChatId('kick', channel),
+            kickPrediction(data.prediction),
+          )
+        } catch {
+          this.log(LogLevel.DEBUG, `Bad prediction data: ${prediction.data}`)
+        }
+      }
       return
     }
 
@@ -360,6 +389,22 @@ export class KickConnector implements ChatConnector {
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
     }
+    try {
+      const response = await fetch(
+        `https://kick.com/api/v2/channels/${channel}/predictions/latest`,
+      )
+      const latest = PollResponse(await response.json())
+      if (!(latest instanceof type.errors) && latest.data) {
+        const data = latest.data as { prediction?: unknown }
+        const prediction = kickPrediction(data.prediction ?? data)
+        // The latest one may have been resolved long ago
+        if (prediction && prediction.state !== 'resolved') {
+          setPrediction(chatId, prediction)
+        }
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch prediction: ${error}`)
+    }
   }
 
   // Kick's raid, as a notice in Twitch's shape: kind "raid" with displayName and viewerCount
@@ -500,6 +545,14 @@ export class KickConnector implements ChatConnector {
     this.channelsMap.set(channel, channelId)
     this.reverseChannelsMap.set(channelId, channel)
     this.fetchPinPoll(channel)
+    const predictions = this.predictionChannels.get(channel)
+    if (predictions) {
+      this.reverseChannelsMap.set(predictions, channel)
+      this.send({
+        event: 'pusher:subscribe',
+        data: { auth: '', channel: predictions },
+      })
+    }
 
     // Socket may have closed while fetching; status is then 'disconnected' and the next connect retries
     this.send({
@@ -563,6 +616,11 @@ export class KickConnector implements ChatConnector {
       )
       return null
     }
+    // Predictions go by the channel's id, not the chatroom's
+    this.predictionChannels.set(
+      channel,
+      `predictions-channel-${channelInfo.id}` as InternalChannelId,
+    )
     const id = channelInfo.chatroom.id
     return `chatrooms.${id}.v2` as InternalChannelId
   }
@@ -572,6 +630,13 @@ export class KickConnector implements ChatConnector {
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
     forgetState(toChatId('kick', channel))
+    const predictions = this.predictionChannels.get(channel)
+    if (predictions) {
+      this.send({
+        event: 'pusher:unsubscribe',
+        data: { channel: predictions },
+      })
+    }
 
     const channelId = this.channelsMap.get(channel)
     if (!channelId) {
@@ -711,5 +776,34 @@ function kickPoll(raw: unknown): ChatPoll | null {
     choices: poll.options.map((o) => ({ title: o.label, votes: o.votes })),
     ...(poll.remaining > 0 && { endsAtMs: Date.now() + poll.remaining * 1000 }),
     ended: poll.remaining <= 0,
+  }
+}
+
+function kickPrediction(raw: unknown): ChatPrediction | null {
+  const p = PredictionData(raw)
+  if (p instanceof type.errors) return null
+  const state = p.state === 'ACTIVE'
+    ? 'open'
+    : p.state === 'LOCKED'
+    ? 'locked'
+    : p.state === 'RESOLVED'
+    ? 'resolved'
+    : null
+  if (!state) return null
+  const winner = p.outcomes.findIndex((o) => o.id === p.winning_outcome_id)
+  const created = p.created_at ? Date.parse(p.created_at) : NaN
+  return {
+    id: p.id,
+    title: p.title,
+    outcomes: p.outcomes.map((o) => ({
+      title: o.title,
+      points: o.total_vote_amount ?? 0,
+      users: o.vote_count ?? 0,
+    })),
+    state,
+    ...(state === 'resolved' && winner >= 0 && { winner }),
+    ...(state === 'open' && p.duration && !Number.isNaN(created) && {
+      endsAtMs: created + p.duration * 1000,
+    }),
   }
 }

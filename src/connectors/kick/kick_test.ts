@@ -141,3 +141,53 @@ Deno.test('kick pins and polls reach live subscribers as state', () => {
   assertEquals(poll?.ended, true)
   assertEquals(events[2].type === 'pin' && events[2].pin, null)
 })
+
+Deno.test('kick predictions arrive on the predictions channel', () => {
+  const c = connector()
+  c.reverseChannelsMap.set(
+    'predictions-channel-9' as never,
+    'chan' as ChannelName,
+  )
+  const events: ChatEvent[] = []
+  const unsubscribe = subscribe(
+    toChatId('kick', 'chan' as ChannelName),
+    (e) => events.push(e),
+  )
+  const send = (event: string, state: string) =>
+    c.handleMessage({
+      data: JSON.stringify({
+        event,
+        channel: 'predictions-channel-9',
+        data: JSON.stringify({
+          prediction: {
+            id: 'pr1',
+            title: 'Win?',
+            state,
+            outcomes: [
+              { id: 'a', title: 'Yes', total_vote_amount: 300, vote_count: 3 },
+              { id: 'b', title: 'No', total_vote_amount: 100, vote_count: 1 },
+            ],
+            duration: 60,
+            created_at: '2026-11-14T00:00:00Z',
+            winning_outcome_id: state === 'RESOLVED' ? 'b' : null,
+          },
+        }),
+      }),
+    } as MessageEvent)
+  send('PredictionCreated', 'ACTIVE')
+  send('App\\Events\\PredictionUpdated', 'RESOLVED')
+  send('PredictionUpdated', 'CANCELLED')
+  unsubscribe()
+
+  const got = events.map((e) => e.type === 'prediction' ? e.prediction : 'x')
+  const open = got[0] as { state: string; endsAtMs?: number; outcomes: unknown }
+  assertEquals(open.state, 'open')
+  assertEquals(open.endsAtMs, Date.parse('2026-11-14T00:01:00Z'))
+  assertEquals(open.outcomes, [{ title: 'Yes', points: 300, users: 3 }, {
+    title: 'No',
+    points: 100,
+    users: 1,
+  }])
+  assertEquals((got[1] as { state: string; winner?: number }).winner, 1)
+  assertEquals(got[2], null)
+})

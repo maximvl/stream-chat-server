@@ -100,6 +100,31 @@ export const PollData = type({
   'created_at?': 'string',
 })
 
+// Predictions arrive on predictions-channel-<channel id>, with or without the App\\Events\\ prefix
+export const WsPredictionEvent = type({
+  event:
+    '"App\\Events\\PredictionCreated" | "App\\Events\\PredictionUpdated" | "PredictionCreated" | "PredictionUpdated"',
+  data: 'string',
+  channel: 'string',
+})
+
+// The prediction of those events, and data (or data.prediction) of /api/v2/channels/<channel>/predictions/latest
+export const PredictionData = type({
+  id: 'string',
+  title: 'string',
+  // ACTIVE, LOCKED, RESOLVED, CANCELLED
+  state: 'string',
+  outcomes: type({
+    id: 'string',
+    title: 'string',
+    'total_vote_amount?': 'number | null',
+    'vote_count?': 'number | null',
+  }).array(),
+  'duration?': 'number | null',
+  'created_at?': 'string | null',
+  'winning_outcome_id?': 'string | null',
+})
+
 export const ChatroomResponse = type({ 'pinned_message?': 'unknown' })
 export const PollResponse = type({ 'data?': 'unknown' })
 

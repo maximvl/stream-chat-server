@@ -6,6 +6,7 @@ import {
   ChatMessage,
   ChatPin,
   ChatPoll,
+  ChatPrediction,
   ChatUser,
   ConnectorStatus,
   MessageId,
@@ -20,7 +21,9 @@ import {
   PinnedMessage,
   PinnedMessageResponse,
   PollResponse,
+  PredictionResponse,
   StreamPoll,
+  StreamPrediction,
   VkColorsMap,
   WsChatMessage,
   WsErrorMessage,
@@ -32,7 +35,7 @@ import { CHANNEL_INACTIVITY_TIMEOUT_MINUTES, LogLevel } from '../../config.ts'
 import { myLog, sleep } from '../../utils.ts'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
-import { forgetState, setPin, setPoll } from '../chatEvents.ts'
+import { forgetState, setPin, setPoll, setPrediction } from '../chatEvents.ts'
 import { httpsOnly } from '../avatars.ts'
 
 type InternalChannelId = string & { readonly __brand: unique symbol }
@@ -361,7 +364,7 @@ export class VkVideoConnector implements ChatConnector {
     forgetState(toChatId('vkvideo', channel))
   }
 
-  // Pinned message on the chat channel, the stream's poll on the info channel
+  // Pinned message on the chat channel, the stream's poll and prediction on the info channel
   handleStatePush(push: typeof WsPush.infer) {
     const channel = this.reverseChannelsMap.get(
       push.push.channel as InternalChannelId,
@@ -379,6 +382,9 @@ export class VkVideoConnector implements ChatConnector {
         break
       case 'poll':
         setPoll(chatId, vkPoll(data))
+        break
+      case 'prediction':
+        setPrediction(chatId, vkPrediction(data))
     }
   }
 
@@ -404,6 +410,17 @@ export class VkVideoConnector implements ChatConnector {
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
+    }
+    try {
+      const response = await fetch(`${base}/prediction`)
+      const prediction = PredictionResponse(await response.json())
+      if (!(prediction instanceof type.errors)) {
+        // A prediction resolved long ago would flash its results on join
+        const current = vkPrediction(prediction.data.prediction)
+        if (current?.state !== 'resolved') setPrediction(chatId, current)
+      }
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `Failed to fetch prediction: ${error}`)
     }
   }
 
@@ -644,5 +661,33 @@ function vkPoll(raw: unknown): ChatPoll | null {
       endsAtMs: (poll.createdAt + poll.duration) * 1000,
     }),
     ended,
+  }
+}
+
+function vkPrediction(raw: unknown): ChatPrediction | null {
+  const p = StreamPrediction(raw)
+  if (p instanceof type.errors) return null
+  const state = p.state === 'active'
+    ? 'open'
+    : p.state === 'decision'
+    ? 'locked'
+    : p.state === 'ended'
+    ? 'resolved'
+    : null
+  if (!state) return null
+  const winner = p.decisions.findIndex((d) => d.isWinner)
+  return {
+    id: String(p.id),
+    title: p.title,
+    outcomes: p.decisions.map((d) => ({
+      title: d.name,
+      points: d.pointsBank ?? 0,
+      users: d.votesCount ?? 0,
+    })),
+    state,
+    ...(state === 'resolved' && winner >= 0 && { winner }),
+    ...(state === 'open' && p.createdAt && p.duration && {
+      endsAtMs: (p.createdAt + p.duration) * 1000,
+    }),
   }
 }

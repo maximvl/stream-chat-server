@@ -168,12 +168,12 @@ function noticeFilter(url: URL): (message: ChatMessage) => boolean {
     : (message) => !message.notice
 }
 
-// Pins and polls (types 'pin' and 'poll') are opt-in with pins=1: older clients treat an unknown event as a clear
+// Pins, polls and predictions (types 'pin', 'poll', 'prediction') are opt-in with pins=1: older clients treat an unknown event as a clear
 function wantsState(url: URL): boolean {
   return url.searchParams.get('pins') === '1'
 }
 
-// Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear' | 'pin' | 'poll'} events of one chat
+// Server-Sent Events: pushes {type: 'message' | 'delete' | 'clear' | 'pin' | 'poll' | 'prediction'} events of one chat
 function chat_stream(req: Request, ip: string): Promise<Response> {
   const url = new URL(req.url)
   const params = ChatStatusRequest({
@@ -218,7 +218,10 @@ function chat_stream(req: Request, ip: string): Promise<Response> {
         toChatId(params.server, channel),
         (event) => {
           if (event.type === 'message' && !keep(event.message)) return
-          if ((event.type === 'pin' || event.type === 'poll') && !state) return
+          if (
+            (event.type === 'pin' || event.type === 'poll' ||
+              event.type === 'prediction') && !state
+          ) return
           send(`data: ${JSON.stringify(event)}\n\n`)
         },
       )

@@ -136,6 +136,23 @@ export const StreamPoll = type({
   decisions: type({ name: 'string', votesCount: 'number' }).array(),
 })
 
+// The stream's channel points prediction; state active, decision (bets closed), ended or canceled
+export const StreamPrediction = type({
+  id: 'number | string',
+  title: 'string',
+  state: 'string',
+  'createdAt?': 'number',
+  'duration?': 'number | null',
+  decisions: type({
+    name: 'string',
+    'pointsBank?': 'number',
+    'votesCount?': 'number',
+    'isWinner?': 'boolean',
+  }).array(),
+})
+
+export const PredictionResponse = type({ data: { prediction: 'unknown' } })
+
 // /v1/channel/<blog>/stream/slot/default/chat/pinned_message and .../poll
 export const PinnedMessageResponse = type({
   data: { pinnedMessage: 'unknown' },

@@ -1,4 +1,11 @@
-import { ChatId, ChatMessage, ChatPin, ChatPoll, MessageId } from './types.ts'
+import {
+  ChatId,
+  ChatMessage,
+  ChatPin,
+  ChatPoll,
+  ChatPrediction,
+  MessageId,
+} from './types.ts'
 
 export type ChatEvent =
   | { type: 'message'; message: ChatMessage }
@@ -6,8 +13,9 @@ export type ChatEvent =
   | { type: 'clear' }
   | { type: 'pin'; pin: ChatPin | null }
   | { type: 'poll'; poll: ChatPoll | null }
+  | { type: 'prediction'; prediction: ChatPrediction | null }
 
-// An ended poll stays this long, so a client that connects right after still sees the results
+// An ended poll or a resolved prediction stays this long, so a client that connects right after still sees the results
 const ENDED_POLL_KEPT_MS = 60_000
 
 type Listener = (event: ChatEvent) => void
@@ -39,6 +47,7 @@ export function emit(chatId: ChatId, event: ChatEvent) {
 // Pinned message and running poll per chat: state rather than lines, sent to a stream when it opens
 const pins: Map<ChatId, ChatPin> = new Map()
 const polls: Map<ChatId, ChatPoll> = new Map()
+const predictions: Map<ChatId, ChatPrediction> = new Map()
 
 export function setPin(chatId: ChatId, pin: ChatPin | null) {
   if (!pin && !pins.has(chatId)) return
@@ -59,6 +68,21 @@ export function setPoll(chatId: ChatId, poll: ChatPoll | null) {
   }
 }
 
+export function setPrediction(
+  chatId: ChatId,
+  prediction: ChatPrediction | null,
+) {
+  if (!prediction && !predictions.has(chatId)) return
+  if (prediction) predictions.set(chatId, prediction)
+  else predictions.delete(chatId)
+  emit(chatId, { type: 'prediction', prediction })
+  if (prediction?.state === 'resolved') {
+    setTimeout(() => {
+      if (predictions.get(chatId) === prediction) predictions.delete(chatId)
+    }, ENDED_POLL_KEPT_MS)
+  }
+}
+
 export function currentPin(chatId: ChatId): ChatPin | undefined {
   return pins.get(chatId)
 }
@@ -71,6 +95,8 @@ export function chatState(chatId: ChatId): ChatEvent[] {
   }
   const poll = polls.get(chatId)
   if (poll) events.push({ type: 'poll', poll })
+  const prediction = predictions.get(chatId)
+  if (prediction) events.push({ type: 'prediction', prediction })
   return events
 }
 
@@ -78,4 +104,5 @@ export function chatState(chatId: ChatId): ChatEvent[] {
 export function forgetState(chatId: ChatId) {
   pins.delete(chatId)
   polls.delete(chatId)
+  predictions.delete(chatId)
 }

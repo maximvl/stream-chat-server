@@ -560,3 +560,61 @@ Deno.test('chat stream sends the current pin and poll only to pins=1 clients', a
   assertEquals(withState.includes('"type":"poll"'), true)
   assertEquals(without.includes('"type":"pin"'), false)
 })
+
+Deno.test('twitch predictions from PubSub: open, locked, resolved, canceled', () => {
+  const c = connector()
+  c.channelByBroadcaster = new Map([['42', 'chan' as ChannelName]])
+  const events: ChatEvent[] = []
+  const unsubscribe = subscribe(
+    toChatId('twitch', 'chan' as ChannelName),
+    (e) => events.push(e),
+  )
+  const send = (status: string) =>
+    c.handlePubSub('predictions-channel-v1.42', {
+      type: 'event-updated',
+      data: {
+        timestamp: '2026-11-14T00:00:05Z',
+        event: {
+          id: 'e1',
+          title: 'Win?',
+          status,
+          created_at: '2026-11-14T00:00:00Z',
+          prediction_window_seconds: 120,
+          winning_outcome_id: status === 'RESOLVED' ? 'o2' : null,
+          outcomes: [
+            {
+              id: 'o1',
+              title: 'Yes',
+              color: 'BLUE',
+              total_points: 1000,
+              total_users: 10,
+            },
+            {
+              id: 'o2',
+              title: 'No',
+              color: 'PINK',
+              total_points: 3000,
+              total_users: 5,
+            },
+          ],
+        },
+      },
+    })
+  for (const status of ['ACTIVE', 'LOCKED', 'RESOLVED', 'CANCELED']) {
+    send(status)
+  }
+  unsubscribe()
+
+  const got = events.map((e) => e.type === 'prediction' ? e.prediction : 'x')
+  assertEquals(got.map((p) => p && typeof p === 'object' ? p.state : p), [
+    'open',
+    'locked',
+    'resolved',
+    null,
+  ])
+  assertEquals(
+    (got[0] as { endsAtMs?: number }).endsAtMs,
+    Date.parse('2026-11-14T00:02:00Z'),
+  )
+  assertEquals((got[2] as { winner?: number }).winner, 1)
+})

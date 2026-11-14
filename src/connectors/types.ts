@@ -103,6 +103,17 @@ export type ChatPoll = {
   ended: boolean
 }
 
+// The platform's channel points prediction. open: taking bets until endsAtMs; locked: waiting
+// for the result; resolved: winner is the index of the outcome that won. A canceled one is gone
+export type ChatPrediction = {
+  id: string
+  title: string
+  outcomes: { title: string; points: number; users: number }[]
+  state: 'open' | 'locked' | 'resolved'
+  winner?: number
+  endsAtMs?: number
+}
+
 export type TwitchBadge = {
   id: string
   // Badge set: "moderator", "vip", "subscriber"... (id is the version inside it)

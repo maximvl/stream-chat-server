@@ -208,3 +208,57 @@ Deno.test('vk pins and polls become chat state', () => {
   assertEquals(events[3].type === 'poll' && events[3].poll, null)
   assertEquals(events[4].type === 'pin' && events[4].pin, null)
 })
+
+Deno.test('vk predictions: open, bets closed, resolved with the winner', () => {
+  const c = connector()
+  const events: ChatEvent[] = []
+  const unsubscribe = subscribe(
+    toChatId('vkvideo', 'chan' as ChannelName),
+    (e) => events.push(e),
+  )
+  const prediction = (state: string, winner = false) =>
+    push('channel-info:1', 'prediction', {
+      id: 9,
+      title: 'Победим?',
+      state,
+      createdAt: 100,
+      duration: 120,
+      decisions: [
+        {
+          id: 1,
+          name: 'Да',
+          pointsBank: 5000,
+          votesCount: 12,
+          isWinner: winner,
+        },
+        {
+          id: 2,
+          name: 'Нет',
+          pointsBank: 1500,
+          votesCount: 4,
+          isWinner: false,
+        },
+      ],
+    })
+  c.handleMessage(prediction('active'))
+  c.handleMessage(prediction('decision'))
+  c.handleMessage(prediction('ended', true))
+  c.handleMessage(prediction('canceled'))
+  unsubscribe()
+
+  const got = events.map((e) => e.type === 'prediction' ? e.prediction : 'x')
+  assertEquals(got.map((p) => p && typeof p === 'object' ? p.state : p), [
+    'open',
+    'locked',
+    'resolved',
+    null,
+  ])
+  const open = got[0] as { endsAtMs?: number; outcomes: unknown }
+  assertEquals(open.endsAtMs, 220_000)
+  assertEquals(open.outcomes, [{ title: 'Да', points: 5000, users: 12 }, {
+    title: 'Нет',
+    points: 1500,
+    users: 4,
+  }])
+  assertEquals((got[2] as { winner?: number }).winner, 0)
+})

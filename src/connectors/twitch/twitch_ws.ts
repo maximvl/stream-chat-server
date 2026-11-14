@@ -58,11 +58,18 @@ import {
   pinFromPubSub,
   PinUpdate,
   pollFromPubSub,
+  predictionFromPubSub,
   twitchEmote,
   twitchPin,
   TwitchPubSub,
 } from './pubsub.ts'
-import { currentPin, forgetState, setPin, setPoll } from '../chatEvents.ts'
+import {
+  currentPin,
+  forgetState,
+  setPin,
+  setPoll,
+  setPrediction,
+} from '../chatEvents.ts'
 import { normalizeChannel, toChatId } from '../utils.ts'
 import { emit } from '../chatEvents.ts'
 import { AvatarCache } from '../avatars.ts'
@@ -205,7 +212,7 @@ export class TwitchConnector implements ChatConnector {
     this.watchPinPoll(channelLower)
   }
 
-  // Pinned message and poll from PubSub, plus the pin already up from GQL
+  // Pinned message, poll and prediction from PubSub, plus the pin already up from GQL
   async watchPinPoll(channel: ChannelName) {
     let id: string
     try {
@@ -218,7 +225,7 @@ export class TwitchConnector implements ChatConnector {
     this.pubsub ??= new TwitchPubSub((topic, message) =>
       this.handlePubSub(topic, message)
     )
-    this.pubsub.listen([`pinned-chat-updates-v1.${id}`, `polls.${id}`])
+    this.pubsub.listen(pubsubTopics(id))
     this.fetch_pinned(channel, id)
       .then((pin) => pin && setPin(toChatId('twitch', channel), pin))
       .catch((error) =>
@@ -237,6 +244,8 @@ export class TwitchConnector implements ChatConnector {
     }
     if (name === 'polls') {
       setPoll(chatId, pollFromPubSub(data))
+    } else if (name === 'predictions-channel-v1') {
+      setPrediction(chatId, predictionFromPubSub(data))
     } else if (kind === 'pin-message') {
       setPin(chatId, pinFromPubSub(data))
     } else if (kind === 'unpin-message') {
@@ -306,7 +315,7 @@ export class TwitchConnector implements ChatConnector {
     this.messages.delete(channel)
     const id = this.broadcasterByChannel.get(channel)
     if (id) {
-      this.pubsub?.unlisten([`pinned-chat-updates-v1.${id}`, `polls.${id}`])
+      this.pubsub?.unlisten(pubsubTopics(id))
       this.channelByBroadcaster.delete(id)
     }
     forgetState(toChatId('twitch', channel))
@@ -1189,3 +1198,9 @@ export class TwitchConnector implements ChatConnector {
     return status
   }
 }
+
+const pubsubTopics = (id: string) => [
+  `pinned-chat-updates-v1.${id}`,
+  `polls.${id}`,
+  `predictions-channel-v1.${id}`,
+]

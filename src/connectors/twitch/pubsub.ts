@@ -1,10 +1,16 @@
-// Twitch PubSub (wss://pubsub-edge.twitch.tv) for what IRC doesn't carry: pinned messages and polls.
-// pinned-chat-updates-v1.<id> and polls.<id> are listened to without a token, the way twitch.tv's own
+// Twitch PubSub (wss://pubsub-edge.twitch.tv) for what IRC doesn't carry: pinned messages, polls and
+// predictions. pinned-chat-updates-v1.<id>, polls.<id> and predictions-channel-v1.<id> are listened to without a token, the way twitch.tv's own
 // page does for viewers. Undocumented: payloads follow twitch4j's models (snake_case).
 import { type } from 'arktype'
 import { LogLevel } from '../../config.ts'
 import { myLog } from '../../utils.ts'
-import { ChatEmote, ChatPin, ChatPoll, UserId } from '../types.ts'
+import {
+  ChatEmote,
+  ChatPin,
+  ChatPoll,
+  ChatPrediction,
+  UserId,
+} from '../types.ts'
 
 // Twitch's limit per connection
 const TOPICS_PER_SOCKET = 50
@@ -262,6 +268,51 @@ export function pollFromPubSub(data: unknown): ChatPoll | null {
     })),
     ...(!ended && remaining > 0 && { endsAtMs: Date.now() + remaining }),
     ended,
+  }
+}
+
+const Prediction = type({
+  id: 'string',
+  title: 'string',
+  status: 'string',
+  outcomes: type({
+    id: 'string',
+    title: 'string',
+    total_points: 'number',
+    total_users: 'number',
+  }).array(),
+  'prediction_window_seconds?': 'number',
+  'created_at?': 'string',
+  'winning_outcome_id?': 'string | null',
+})
+
+// predictions-channel-v1's data: {event}. Canceled ones are gone
+export function predictionFromPubSub(data: unknown): ChatPrediction | null {
+  const p = Prediction((data as { event?: unknown } | null)?.event)
+  if (p instanceof type.errors) return null
+  const state = p.status === 'ACTIVE'
+    ? 'open'
+    : p.status === 'RESOLVED'
+    ? 'resolved'
+    : p.status === 'LOCKED' || p.status === 'RESOLVE_PENDING'
+    ? 'locked'
+    : null
+  if (!state) return null
+  const winner = p.outcomes.findIndex((o) => o.id === p.winning_outcome_id)
+  const created = toMs(p.created_at)
+  return {
+    id: p.id,
+    title: p.title,
+    outcomes: p.outcomes.map((o) => ({
+      title: o.title,
+      points: o.total_points,
+      users: o.total_users,
+    })),
+    state,
+    ...(state === 'resolved' && winner >= 0 && { winner }),
+    ...(state === 'open' && created && p.prediction_window_seconds && {
+      endsAtMs: created + p.prediction_window_seconds * 1000,
+    }),
   }
 }
 
