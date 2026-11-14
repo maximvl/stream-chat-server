@@ -87,17 +87,17 @@ export function currentPin(chatId: ChatId): ChatPin | undefined {
   return pins.get(chatId)
 }
 
+// All three, null for what is not up: a client that reconnects drops what ended while it was away
 export function chatState(chatId: ChatId): ChatEvent[] {
-  const events: ChatEvent[] = []
   const pin = pins.get(chatId)
-  if (pin && (!pin.endsAtMs || pin.endsAtMs > Date.now())) {
-    events.push({ type: 'pin', pin })
-  }
-  const poll = polls.get(chatId)
-  if (poll) events.push({ type: 'poll', poll })
-  const prediction = predictions.get(chatId)
-  if (prediction) events.push({ type: 'prediction', prediction })
-  return events
+  return [
+    {
+      type: 'pin',
+      pin: pin && (!pin.endsAtMs || pin.endsAtMs > Date.now()) ? pin : null,
+    },
+    { type: 'poll', poll: polls.get(chatId) ?? null },
+    { type: 'prediction', prediction: predictions.get(chatId) ?? null },
+  ]
 }
 
 // A channel the aggregator left: its pin and poll would be stale when it joins again

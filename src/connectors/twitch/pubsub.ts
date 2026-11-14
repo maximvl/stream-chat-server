@@ -142,7 +142,9 @@ export class TwitchPubSub {
 }
 
 // Seconds or an ISO date, depending on the payload
-function toMs(value: number | string | null | undefined): number | undefined {
+export function toMs(
+  value: number | string | null | undefined,
+): number | undefined {
   if (value === null || value === undefined || value === '') return undefined
   if (typeof value === 'number') return value < 1e12 ? value * 1000 : value
   const ms = Date.parse(value)
@@ -234,10 +236,6 @@ export function pinFromPubSub(data: unknown): ChatPin | null {
 }
 
 export const PinUpdate = type({ 'ends_at?': 'number | string | null' })
-
-export function endsAtMs(value: number | string | null | undefined) {
-  return toMs(value)
-}
 
 const Poll = type({
   poll_id: 'string',

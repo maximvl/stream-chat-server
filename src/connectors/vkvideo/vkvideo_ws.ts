@@ -406,7 +406,9 @@ export class VkVideoConnector implements ChatConnector {
       const response = await fetch(`${base}/poll`)
       const poll = PollResponse(await response.json())
       if (!(poll instanceof type.errors)) {
-        setPoll(chatId, vkPoll(poll.data.poll))
+        // Results of a poll that ended before we looked are no news, like a resolved prediction's
+        const current = vkPoll(poll.data.poll)
+        setPoll(chatId, current?.ended ? null : current)
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
@@ -415,9 +417,9 @@ export class VkVideoConnector implements ChatConnector {
       const response = await fetch(`${base}/prediction`)
       const prediction = PredictionResponse(await response.json())
       if (!(prediction instanceof type.errors)) {
-        // A prediction resolved long ago would flash its results on join
+        // A prediction resolved long ago would flash its results on join; one held as locked ends
         const current = vkPrediction(prediction.data.prediction)
-        if (current?.state !== 'resolved') setPrediction(chatId, current)
+        setPrediction(chatId, current?.state === 'resolved' ? null : current)
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch prediction: ${error}`)

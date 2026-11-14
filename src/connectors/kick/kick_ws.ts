@@ -363,44 +363,43 @@ export class KickConnector implements ChatConnector {
     }
   }
 
-  // The pin and poll already up when the channel is joined; later changes come from the socket
+  // The pin, poll and prediction up when the channel is (re)joined; later changes come from the socket.
+  // What Kick reports replaces what we hold, none included: it may have ended while the socket was down
   async fetchPinPoll(channel: ChannelName) {
     const chatId = toChatId('kick', channel)
+    const base = `https://kick.com/api/v2/channels/${channel}`
     try {
-      const response = await fetch(
-        `https://kick.com/api/v2/channels/${channel}/chatroom`,
-      )
-      const chatroom = ChatroomResponse(await response.json())
-      if (!(chatroom instanceof type.errors) && chatroom.pinned_message) {
-        setPin(chatId, kickPin(chatroom.pinned_message))
+      const chatroom = ChatroomResponse(await kickRest(`${base}/chatroom`))
+      if (!(chatroom instanceof type.errors)) {
+        setPin(
+          chatId,
+          chatroom.pinned_message ? kickPin(chatroom.pinned_message) : null,
+        )
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
     }
     try {
-      const response = await fetch(
-        `https://kick.com/api/v2/channels/${channel}/polls`,
-      )
-      const polls = PollResponse(await response.json())
-      if (!(polls instanceof type.errors) && polls.data) {
-        const data = polls.data as { poll?: unknown }
-        setPoll(chatId, kickPoll(data.poll ?? data))
+      const polls = PollResponse(await kickRest(`${base}/polls`))
+      if (!(polls instanceof type.errors)) {
+        const data = polls.data as { poll?: unknown } | null | undefined
+        const poll = data ? kickPoll(data.poll ?? data) : null
+        // Like a resolved prediction: results of a poll that ended before we looked are no news
+        setPoll(chatId, poll?.ended ? null : poll)
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
     }
     try {
-      const response = await fetch(
-        `https://kick.com/api/v2/channels/${channel}/predictions/latest`,
-      )
-      const latest = PollResponse(await response.json())
-      if (!(latest instanceof type.errors) && latest.data) {
-        const data = latest.data as { prediction?: unknown }
-        const prediction = kickPrediction(data.prediction ?? data)
+      const latest = PollResponse(await kickRest(`${base}/predictions/latest`))
+      if (!(latest instanceof type.errors)) {
+        const data = latest.data as { prediction?: unknown } | null | undefined
+        const prediction = data ? kickPrediction(data.prediction ?? data) : null
         // The latest one may have been resolved long ago
-        if (prediction && prediction.state !== 'resolved') {
-          setPrediction(chatId, prediction)
-        }
+        setPrediction(
+          chatId,
+          prediction?.state === 'resolved' ? null : prediction,
+        )
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch prediction: ${error}`)
@@ -747,6 +746,14 @@ export class KickConnector implements ChatConnector {
 
     return status
   }
+}
+
+// 404 is "none up"; any other failure (429, Cloudflare's page) throws, so what we hold stays
+async function kickRest(url: string): Promise<unknown> {
+  const response = await fetch(url)
+  if (response.status === 404) return {}
+  if (!response.ok) throw new Error(`${url}: ${response.status}`)
+  return await response.json()
 }
 
 function kickPin(raw: unknown): ChatPin | null {

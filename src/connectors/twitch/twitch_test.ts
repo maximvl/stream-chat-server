@@ -556,6 +556,11 @@ Deno.test('chat stream sends the current pin and poll only to pins=1 clients', a
   const without = await read('')
   setPin(chatId, null)
   setPoll(chatId, null)
+  // Gone while a client was away: it hears null, not silence, so it drops its stale cards
+  const cleared = await read('&pins=1')
+  assertEquals(cleared.includes('"pin":null'), true)
+  assertEquals(cleared.includes('"poll":null'), true)
+  assertEquals(cleared.includes('"prediction":null'), true)
   assertEquals(withState.includes('"type":"pin"'), true)
   assertEquals(withState.includes('"type":"poll"'), true)
   assertEquals(without.includes('"type":"pin"'), false)

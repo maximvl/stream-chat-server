@@ -54,11 +54,11 @@ type CheerTier = { minBits: number; color: string; imageUrl: string }
 type Cheermotes = Map<string, CheerTier[]>
 import { type } from 'arktype'
 import {
-  endsAtMs,
   pinFromPubSub,
   PinUpdate,
   pollFromPubSub,
   predictionFromPubSub,
+  toMs,
   twitchEmote,
   twitchPin,
   TwitchPubSub,
@@ -227,7 +227,8 @@ export class TwitchConnector implements ChatConnector {
     )
     this.pubsub.listen(pubsubTopics(id))
     this.fetch_pinned(channel, id)
-      .then((pin) => pin && setPin(toChatId('twitch', channel), pin))
+      // null too: a pin taken down while PubSub was away must not stay
+      .then((pin) => setPin(toChatId('twitch', channel), pin))
       .catch((error) =>
         this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
       )
@@ -255,7 +256,7 @@ export class TwitchConnector implements ChatConnector {
       const pin = currentPin(chatId)
       const update = PinUpdate(data)
       if (pin && !(update instanceof type.errors)) {
-        const ends = endsAtMs(update.ends_at)
+        const ends = toMs(update.ends_at)
         const { endsAtMs: _, ...rest } = pin
         setPin(chatId, ends ? { ...rest, endsAtMs: ends } : rest)
       }
