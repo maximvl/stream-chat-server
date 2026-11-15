@@ -2,7 +2,7 @@
 // Called by the RTE backend with ADMIN_TOKEN, never by browsers.
 import { timingSafeEqual } from 'node:crypto'
 import { AppState } from '../app.ts'
-import { ADMIN_TOKEN } from '../config.ts'
+import { ADMIN_TOKEN, BAN_EXEMPT } from '../config.ts'
 import { normalizeChannel, toChatId } from '../connectors/utils.ts'
 import { ipMatcher, isIpOrRange, PRIVATE_RANGES } from './limits.ts'
 
@@ -31,6 +31,7 @@ const error = (status: number, message: string) =>
 export async function admin_handler(
   req: Request,
   token = ADMIN_TOKEN,
+  exempt = BAN_EXEMPT,
 ): Promise<Response> {
   if (!token) return new Response('Not found', { status: 404 })
   if (!authorized(req, token)) {
@@ -41,7 +42,7 @@ export async function admin_handler(
     case 'GET /api/admin/overview':
       return await overview()
     case 'PUT /api/admin/bans':
-      return await ban(req)
+      return await ban(req, exempt)
     case 'DELETE /api/admin/bans':
       return await unban(url)
   }
@@ -72,7 +73,7 @@ async function overview(): Promise<Response> {
 }
 
 // Body {ip, reason?}: an address or a CIDR range. Its open streams end right away
-async function ban(req: Request): Promise<Response> {
+async function ban(req: Request, exempt: string): Promise<Response> {
   let body: { ip?: unknown; reason?: unknown }
   try {
     body = await req.json()
@@ -86,6 +87,14 @@ async function ban(req: Request): Promise<Response> {
       400,
       'A private address: our proxies and services, not a client',
     )
+  }
+  // The ban's address inside an exempt range, or an exempt address inside the banned range
+  const exemptList = exempt.split(',').map((e) => e.trim()).filter(Boolean)
+  if (
+    ipMatcher(exempt)(ip.split('/')[0]) ||
+    exemptList.some((e) => ipMatcher(ip)(e.split('/')[0]))
+  ) {
+    return error(400, 'One of our own servers (BAN_EXEMPT), not a client')
   }
   const reason = typeof body.reason === 'string'
     ? body.reason.trim().slice(0, MAX_REASON)

@@ -77,6 +77,7 @@ Deno.test('admin routes want the admin token and ban addresses from the whole AP
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
       'secret',
+      '198.51.100.9, 192.0.2.0/28',
     )
   const status = (ip: string) =>
     main_handler(
@@ -116,6 +117,10 @@ Deno.test('admin routes want the admin token and ban addresses from the whole AP
       '0.0.0.0/0',
       '1.2.3.4/2',
       '::/0',
+      // Our own servers (BAN_EXEMPT): an address, a range around one, one inside an exempt range
+      '198.51.100.9',
+      '198.51.100.0/24',
+      '192.0.2.5',
     ]
   ) {
     assertEquals((await admin('PUT', '/api/admin/bans', { ip })).status, 400)

@@ -68,3 +68,7 @@ export const ADMIN_TOKEN = getEnv('ADMIN_TOKEN') || ''
 // Proxies in front of this server (comma-separated addresses or CIDR ranges): only their X-Forwarded-For /
 // X-Real-IP is believed for the client address
 export const TRUSTED_PROXIES = getEnv('TRUSTED_PROXIES') || ''
+
+// Our own servers that call the API (comma-separated addresses or CIDR ranges), such as the RTE backend
+// checking chat commands on every aggregator: the admin refuses to ban them, which would break that for all
+export const BAN_EXEMPT = getEnv('BAN_EXEMPT') || ''
