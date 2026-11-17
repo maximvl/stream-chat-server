@@ -59,6 +59,12 @@ export const AvatarsRequest = type({
   return { server, ids: keys.slice(0, MAX_AVATAR_IDS) }
 })
 
+// Live viewers of one channel, for the platforms the browser cannot ask (see ChatConnector.fetchViewers)
+export const ViewersRequest = type({
+  server: '"wtv"',
+  channel: /^[A-Za-z0-9_.-]{1,64}$/,
+})
+
 export const ChatLastMessagesRequest = type({
   server: ChatServer,
   channel: 'string',

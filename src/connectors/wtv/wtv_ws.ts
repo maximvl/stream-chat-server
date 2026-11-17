@@ -24,6 +24,9 @@ const WTV_PROFILES_BY_NICKNAME_URL =
 const WTV_CHATS_URL = 'https://chats-service.w.tv/api/v1/chats'
 
 const MAX_RECONNECT_ATTEMPTS = 10
+// Every reader of a channel asks each minute; w.tv is asked at most this often per channel
+const VIEWERS_CACHE_MS = 30_000
+const VIEWERS_CACHE_LIMIT = 1000
 const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 30_000
 
@@ -40,6 +43,8 @@ export class WtvConnector implements ChatConnector {
   userIdToNickname: Map<string, string> = new Map()
 
   avatars = new AvatarCache()
+  viewers: Map<string, { at: number; value: Promise<number | null> }> =
+    new Map()
 
   private stopped = new Set<ChannelName>()
   private opening = new Set<ChannelName>()
@@ -397,6 +402,36 @@ export class WtvConnector implements ChatConnector {
             .imageUrl ?? ''
         }),
     )
+  }
+
+  fetchViewers(channelOrig: string): Promise<number | null> {
+    const nickname = normalizeChannel(channelOrig)
+    const cached = this.viewers.get(nickname)
+    if (cached && Date.now() - cached.at < VIEWERS_CACHE_MS) return cached.value
+    const value = (async () => {
+      const id = await this.fetchUserIdByNickname(nickname)
+      if (!id) return null
+      const response = await fetch(
+        `https://streams-search-service.w.tv/api/v1/channels/${id}`,
+        {
+          headers: { 'User-Agent': WTV_USER_AGENT, Accept: 'application/json' },
+          // A hung w.tv must not pile up a request per channel every half minute
+          signal: AbortSignal.timeout(10_000),
+        },
+      )
+      if (!response.ok) throw new Error(`w.tv answered ${response.status}`)
+      const { channel } = ChannelResponse.assert(await response.json())
+      return channel.live ? channel.liveStream?.viewers ?? 0 : null
+    })()
+    this.viewers.delete(nickname)
+    // Names anyone may ask for: the oldest go first
+    if (this.viewers.size >= VIEWERS_CACHE_LIMIT) {
+      this.viewers.delete(this.viewers.keys().next().value!)
+    }
+    this.viewers.set(nickname, { at: Date.now(), value })
+    // A failure is not kept: the next reader asks again
+    value.catch(() => this.viewers.delete(nickname))
+    return value
   }
 
   cleanup(): void {

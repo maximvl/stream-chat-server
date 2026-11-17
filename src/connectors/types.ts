@@ -39,6 +39,9 @@ export interface ChatConnector {
   pollMessages?(): Promise<void>
   // Profile pictures by user key (id or username, per platform); throws when the platform didn't answer
   fetchAvatars?(keys: string[]): Promise<Record<string, string>>
+  // Viewers of the channel's live stream, null off the air; throws when the platform didn't answer.
+  // Only for platforms a browser cannot ask itself (w.tv turns away most addresses and has no CORS)
+  fetchViewers?(channel: string): Promise<number | null>
 }
 
 export type MessageId = string & { readonly __brand: unique symbol }

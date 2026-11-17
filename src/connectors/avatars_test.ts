@@ -104,3 +104,31 @@ Deno.test('w.tv avatars come from the user channel, with a user agent', async ()
     globalThis.fetch = realFetch
   }
 })
+
+Deno.test('w.tv viewers: the live stream of the nick, null off the air, asked once per half minute', async () => {
+  const c = Object.assign(Object.create(WtvConnector.prototype), {
+    nicknameToUserId: new Map([['live', 'id-live'], ['off', 'id-off']]),
+    userIdToNickname: new Map(),
+    missingProfiles: new Set(),
+    viewers: new Map(),
+  }) as WtvConnector
+  const asked: string[] = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = (input) => {
+    const id = String(input).split('/').pop()!
+    asked.push(id)
+    return Promise.resolve(Response.json({
+      channel: id === 'id-live'
+        ? { live: true, liveStream: { viewers: 4 } }
+        : { live: false },
+    }))
+  }
+  try {
+    assertEquals(await c.fetchViewers('Live'), 4)
+    assertEquals(await c.fetchViewers('live'), 4)
+    assertEquals(await c.fetchViewers('off'), null)
+    assertEquals(asked, ['id-live', 'id-off'])
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

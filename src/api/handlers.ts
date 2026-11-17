@@ -17,6 +17,7 @@ import {
   ChatMessagesRequest,
   ChatStatusRequest,
   ConnectRequest,
+  ViewersRequest,
 } from './schema.ts'
 import { type } from 'arktype'
 import { myLog } from '../utils.ts'
@@ -126,6 +127,42 @@ const routes: Record<
   '/api/avatars': {
     GET: avatars,
   },
+  '/api/viewers': {
+    GET: viewers,
+  },
+}
+
+// Viewers of a live stream, null off the air: { viewers: number | null }
+async function viewers(req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const params = ViewersRequest({
+    server: url.searchParams.get('server'),
+    channel: url.searchParams.get('channel'),
+  })
+  if (params instanceof type.errors) {
+    return Response.json({ errors: params.issues }, { status: 400 })
+  }
+
+  const connector = AppState.connectors.get(params.server)
+  if (!connector?.fetchViewers) {
+    return Response.json({ errors: ['Unsupported chat server'] }, {
+      status: 400,
+    })
+  }
+
+  try {
+    return Response.json({
+      viewers: await connector.fetchViewers(params.channel),
+    })
+  } catch (error) {
+    myLog(
+      LogLevel.DEBUG,
+      `[${params.server}] Failed to fetch viewers: ${error}`,
+    )
+    return Response.json({ errors: ['The platform did not answer'] }, {
+      status: 502,
+    })
+  }
 }
 
 // Profile images of chatters by user key; users the platform doesn't know are left out
