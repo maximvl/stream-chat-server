@@ -132,3 +132,25 @@ Deno.test('w.tv viewers: the live stream of the nick, null off the air, asked on
     globalThis.fetch = realFetch
   }
 })
+
+Deno.test('w.tv lookups carry a timeout and treat it as a failed lookup', async () => {
+  const c = Object.assign(Object.create(WtvConnector.prototype), {
+    nicknameToUserId: new Map(),
+    userIdToNickname: new Map(),
+    missingProfiles: new Set(),
+    log: () => {},
+  }) as WtvConnector
+  const realFetch = globalThis.fetch
+  let signal: AbortSignal | null | undefined
+  // As a hung connection ends once its timeout fires
+  globalThis.fetch = (_input, init) => {
+    signal = init?.signal
+    return Promise.reject(new DOMException('timed out', 'TimeoutError'))
+  }
+  try {
+    assertEquals(await c.fetchUserIdByNickname('nobody'), null)
+    assertEquals(signal instanceof AbortSignal, true)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

@@ -138,6 +138,7 @@ export class GoshConnector implements ChatConnector {
       `https://gosh.com/gosh_fe_api/gosh_3rdimlive/app/group_chat/fetch_msg?app=kick&ch=website&uid=${params.uid}&ts=${nowTs}`
 
     const resp = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       body: JSON.stringify({
         anchor_id: params.anchorId,

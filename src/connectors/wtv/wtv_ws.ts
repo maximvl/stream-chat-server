@@ -278,6 +278,7 @@ export class WtvConnector implements ChatConnector {
     let response: Response
     try {
       response = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
         headers: {
           'User-Agent': WTV_USER_AGENT,
           Accept: 'application/json',
@@ -338,6 +339,7 @@ export class WtvConnector implements ChatConnector {
     let response: Response
     try {
       response = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
         method: 'POST',
         headers: {
           'User-Agent': WTV_USER_AGENT,
@@ -390,6 +392,7 @@ export class WtvConnector implements ChatConnector {
           const response = await fetch(
             `https://streams-search-service.w.tv/api/v1/channels/${id}`,
             {
+              signal: AbortSignal.timeout(10_000),
               headers: {
                 'User-Agent': WTV_USER_AGENT,
                 Accept: 'application/json',

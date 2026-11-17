@@ -97,6 +97,7 @@ export class GoodgameConnector implements ChatConnector {
     this.smilesLoading = (async () => {
       try {
         const response = await fetch(SMILES_URL, {
+          signal: AbortSignal.timeout(10_000),
           headers: { accept: 'application/json' },
         })
         const list = await response.json()
@@ -377,6 +378,7 @@ export class GoodgameConnector implements ChatConnector {
     ) {
       try {
         const response = await fetch(url, {
+          signal: AbortSignal.timeout(10_000),
           headers: { accept: 'application/json' },
         })
         const info = ChannelInfoResponse(await response.json())
@@ -399,6 +401,7 @@ export class GoodgameConnector implements ChatConnector {
           const response = await fetch(
             `https://goodgame.ru/api/4/users/${id}`,
             {
+              signal: AbortSignal.timeout(10_000),
               headers: { accept: 'application/json' },
             },
           )

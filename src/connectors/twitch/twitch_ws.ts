@@ -278,6 +278,7 @@ export class TwitchConnector implements ChatConnector {
     const prediction =
       'id title status createdAt predictionWindowSeconds outcomes { id title totalPoints totalUsers }'
     const response = await fetch('https://gql.twitch.tv/gql', {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: {
         'Client-Id': TWITCH_WEB_CLIENT_ID,
@@ -969,7 +970,10 @@ export class TwitchConnector implements ChatConnector {
         `https://api.twitch.tv/helix/users?${
           missing.map((id) => `id=${id}`).join('&')
         }`,
-        { headers: await this.web_auth_headers() },
+        {
+          headers: await this.web_auth_headers(),
+          signal: AbortSignal.timeout(10_000),
+        },
       )
       if (!response.ok) {
         throw new Error(`Helix users answered ${response.status}`)
@@ -992,6 +996,7 @@ export class TwitchConnector implements ChatConnector {
       `https://api.twitch.tv/helix/users?login=${channel}`,
       {
         headers: await this.web_auth_headers(),
+        signal: AbortSignal.timeout(10_000),
       },
     )
     const data = await response.json()
@@ -1019,6 +1024,7 @@ export class TwitchConnector implements ChatConnector {
       url,
       {
         headers: await this.web_auth_headers(),
+        signal: AbortSignal.timeout(10_000),
       },
     )
 
@@ -1069,6 +1075,7 @@ export class TwitchConnector implements ChatConnector {
     channel: ChannelName,
   ): Promise<Map<string, ChannelReward>> {
     const response = await fetch('https://gql.twitch.tv/gql', {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: {
         'Client-Id': TWITCH_WEB_CLIENT_ID,
@@ -1103,7 +1110,10 @@ export class TwitchConnector implements ChatConnector {
     const broadcasterId = await this.fetch_broadcaster_id(channel)
     const response = await fetch(
       `https://api.twitch.tv/helix/bits/cheermotes?broadcaster_id=${broadcasterId}`,
-      { headers: await this.web_auth_headers() },
+      {
+        headers: await this.web_auth_headers(),
+        signal: AbortSignal.timeout(10_000),
+      },
     )
     if (!response.ok) {
       throw new Error(`cheermotes: ${response.status}`)

@@ -82,6 +82,7 @@ export class KickConnector implements ChatConnector {
       const response = await fetch(
         'https://web.kick.com/api/v1/realtime/connection',
         {
+          signal: AbortSignal.timeout(10_000),
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -577,6 +578,7 @@ export class KickConnector implements ChatConnector {
           if (!username) throw new Error(`Unknown Kick user ${id}`)
           const response = await fetch(
             `https://kick.com/api/v2/channels/kick/users/${username}`,
+            { signal: AbortSignal.timeout(10_000) },
           )
           if (response.status === 404) return ''
           if (!response.ok) throw new Error(`Kick answered ${response.status}`)
@@ -601,7 +603,7 @@ export class KickConnector implements ChatConnector {
     const url = `https://kick.com/api/v2/channels/${channel}`
     let data: unknown
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
       data = await response.json()
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
@@ -750,7 +752,7 @@ export class KickConnector implements ChatConnector {
 
 // 404 is "none up"; any other failure (429, Cloudflare's page) throws, so what we hold stays
 async function kickRest(url: string): Promise<unknown> {
-  const response = await fetch(url)
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   if (response.status === 404) return {}
   if (!response.ok) throw new Error(`${url}: ${response.status}`)
   return await response.json()

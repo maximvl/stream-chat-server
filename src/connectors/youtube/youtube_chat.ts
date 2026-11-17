@@ -246,7 +246,10 @@ export class YoutubeConnector implements ChatConnector {
   }
 
   async fetchText(url: string): Promise<string | null> {
-    const response = await fetch(url, { headers: HEADERS })
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15_000),
+      headers: HEADERS,
+    })
     if (response.status === 404) {
       await response.body?.cancel()
       return null
@@ -277,6 +280,7 @@ export class YoutubeConnector implements ChatConnector {
       const response = await fetch(
         `https://www.youtube.com/youtubei/v1/live_chat/get_live_chat?key=${session.apiKey}&prettyPrint=false`,
         {
+          signal: AbortSignal.timeout(15_000),
           method: 'POST',
           headers: { ...HEADERS, 'content-type': 'application/json' },
           body: JSON.stringify({

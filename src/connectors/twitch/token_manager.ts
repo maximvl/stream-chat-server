@@ -69,6 +69,7 @@ export class TwitchTokenManager implements TokenManager {
     formData.set('grant_type', 'client_credentials')
 
     const response = await fetch('https://id.twitch.tv/oauth2/token', {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

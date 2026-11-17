@@ -95,10 +95,12 @@ export class YoutubeRemoteConnector implements ChatConnector {
       server: 'youtube',
       channel: state.source,
     })
+    // Only the answer is bounded: the stream itself lasts while the channel is followed
+    const answerTimer = setTimeout(() => controller.abort(), 15_000)
     const response = await fetch(`${this.nodeUrl}/api/chat_stream?${params}`, {
       headers: this.headers,
       signal: controller.signal,
-    })
+    }).finally(() => clearTimeout(answerTimer))
     if (!response.ok || !response.body) {
       await response.body?.cancel()
       throw new Error(`chat_stream: ${response.status}`)

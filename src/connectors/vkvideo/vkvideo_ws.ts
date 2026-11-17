@@ -394,7 +394,9 @@ export class VkVideoConnector implements ChatConnector {
     const base =
       `https://api.live.vkvideo.ru/v1/channel/${channel}/stream/slot/default`
     try {
-      const response = await fetch(`${base}/chat/pinned_message`)
+      const response = await fetch(`${base}/chat/pinned_message`, {
+        signal: AbortSignal.timeout(10_000),
+      })
       const pinned = PinnedMessageResponse(await response.json())
       if (!(pinned instanceof type.errors)) {
         setPin(chatId, vkPin(pinned.data.pinnedMessage))
@@ -403,7 +405,9 @@ export class VkVideoConnector implements ChatConnector {
       this.log(LogLevel.DEBUG, `Failed to fetch pinned message: ${error}`)
     }
     try {
-      const response = await fetch(`${base}/poll`)
+      const response = await fetch(`${base}/poll`, {
+        signal: AbortSignal.timeout(10_000),
+      })
       const poll = PollResponse(await response.json())
       if (!(poll instanceof type.errors)) {
         // Results of a poll that ended before we looked are no news, like a resolved prediction's
@@ -414,7 +418,9 @@ export class VkVideoConnector implements ChatConnector {
       this.log(LogLevel.DEBUG, `Failed to fetch poll: ${error}`)
     }
     try {
-      const response = await fetch(`${base}/prediction`)
+      const response = await fetch(`${base}/prediction`, {
+        signal: AbortSignal.timeout(10_000),
+      })
       const prediction = PredictionResponse(await response.json())
       if (!(prediction instanceof type.errors)) {
         // A prediction resolved long ago would flash its results on join; one held as locked ends
@@ -480,7 +486,9 @@ export class VkVideoConnector implements ChatConnector {
   }
 
   async fetchAppConfig(): Promise<void> {
-    const response = await fetch('https://live.vkvideo.ru/')
+    const response = await fetch('https://live.vkvideo.ru/', {
+      signal: AbortSignal.timeout(15_000),
+    })
     const data = await response.text()
 
     try {
@@ -508,7 +516,7 @@ export class VkVideoConnector implements ChatConnector {
       `https://api.live.vkvideo.ru/v1/blog/${channel}/public_video_stream/chat/user/`
     let data: unknown
     try {
-      const response = await fetch(url)
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
       data = await response.json()
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to fetch channel info: ${error}`)
