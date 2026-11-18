@@ -16,7 +16,11 @@ import { AvatarCache, lookupEach } from '../avatars.ts'
 import { type } from 'arktype'
 import { MessageStorage } from '../messageStorage.ts'
 import { normalizeChannel } from '../utils.ts'
-import { WTV_USER_AGENT, WtvChatConnection } from './connection.ts'
+import {
+  missedMessages,
+  WTV_USER_AGENT,
+  WtvChatConnection,
+} from './connection.ts'
 
 const WTV_PROFILES_BY_NICKNAME_URL =
   'https://profiles-service.w.tv/api/v1/profiles/by-nickname'
@@ -29,6 +33,11 @@ const VIEWERS_CACHE_MS = 30_000
 const VIEWERS_CACHE_LIMIT = 1000
 const RECONNECT_BASE_MS = 1000
 const RECONNECT_MAX_MS = 30_000
+// After a reconnect the chat's history fills the gap: this many latest messages, from a little before the old
+// socket last heard anything (w.tv's clock may run ahead of ours), never from further back than BACKFILL_MAX_MS
+const BACKFILL_LIMIT = 50
+const BACKFILL_SKEW_MS = 5_000
+const BACKFILL_MAX_MS = 120_000
 
 export class WtvConnector implements ChatConnector {
   startedAtMs: number = 0
@@ -55,6 +64,8 @@ export class WtvConnector implements ChatConnector {
     ChannelName,
     ReturnType<typeof setTimeout>
   >()
+  // When the channel's last socket last received a frame: messages after that are taken from the history
+  private heardAt = new Map<ChannelName, number>()
 
   log(level: LogLevel, ...msgs: unknown[]) {
     myLog(level, '[wtv]', ...msgs)
@@ -84,6 +95,8 @@ export class WtvConnector implements ChatConnector {
   }
 
   private handleConnectionClose(channel: ChannelName) {
+    const heard = this.connections.get(channel)?.lastInboundAt
+    if (heard) this.heardAt.set(channel, heard)
     const status = this.channelStatus.get(channel)
     if (status) {
       this.channelStatus.set(channel, {
@@ -201,6 +214,9 @@ export class WtvConnector implements ChatConnector {
     try {
       const previous = this.connections.get(channel)
       if (previous) {
+        if (previous.lastInboundAt) {
+          this.heardAt.set(channel, previous.lastInboundAt)
+        }
         this.connections.delete(channel)
         previous.close(true)
       }
@@ -247,6 +263,7 @@ export class WtvConnector implements ChatConnector {
       if (this.stopped.has(channel)) return
       if (ok) {
         this.reconnectAttempts.set(channel, 0)
+        void this.backfill(channel, userId)
       }
     } catch (error) {
       this.log(LogLevel.DEBUG, `Failed to open ${channel}: ${error}`)
@@ -262,6 +279,52 @@ export class WtvConnector implements ChatConnector {
       !this.isHealthy(channel)
     ) {
       this.scheduleReconnect(channel)
+    }
+  }
+
+  // The socket is quiet in a quiet chat, so it is reopened every WTV_SILENCE_TIMEOUT_MS, and IVS does not
+  // replay what was sent in the second or two it was down. Only after a reconnect: on the first join the
+  // history would bring back old `!chat` commands, which overlays would run again
+  private async backfill(channel: ChannelName, userId: string) {
+    const heard = this.heardAt.get(channel)
+    if (heard === undefined) return
+    const since = Math.max(
+      heard - BACKFILL_SKEW_MS,
+      Date.now() - BACKFILL_MAX_MS,
+    )
+    try {
+      const response = await fetch(
+        `${WTV_CHATS_URL}/${
+          encodeURIComponent(userId)
+        }/messages?limit=${BACKFILL_LIMIT}`,
+        {
+          signal: AbortSignal.timeout(10_000),
+          headers: { 'User-Agent': WTV_USER_AGENT, Accept: 'application/json' },
+        },
+      )
+      if (!response.ok) {
+        this.log(
+          LogLevel.DEBUG,
+          `History of ${channel} not loaded: ${response.status}`,
+        )
+        return
+      }
+      const history = await response.json()
+      if (this.stopped.has(channel)) return
+      // Read after the answer: what the new socket brought meanwhile is known too
+      const known = new Set(
+        (this.messages.get(channel)?.messages ?? []).map((m) => m.id),
+      )
+      const missed = missedMessages(channel, history, since, known)
+      if (missed.length) {
+        this.log(
+          LogLevel.DEBUG,
+          `Recovered ${missed.length} message(s) of ${channel} from history`,
+        )
+      }
+      for (const msg of missed) this.handleIncomingMessage(msg)
+    } catch (error) {
+      this.log(LogLevel.DEBUG, `History of ${channel} not loaded: ${error}`)
     }
   }
 
@@ -375,6 +438,7 @@ export class WtvConnector implements ChatConnector {
     this.stopped.add(channel)
     this.clearReconnectTimer(channel)
     this.reconnectAttempts.delete(channel)
+    this.heardAt.delete(channel)
     this.channelStatus.delete(channel)
     this.messages.delete(channel)
 

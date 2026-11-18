@@ -42,6 +42,26 @@ export function wtvChatMessage(
   }
 }
 
+// The chat's history (chats-service /chats/<id>/messages, newest first) as the messages a socket missed:
+// sent after `since` and not among `known`, oldest first
+export function missedMessages(
+  channel: ChannelName,
+  history: unknown,
+  since: number,
+  known: Set<string>,
+): ChatMessage[] {
+  const items = isRecord(history) && Array.isArray(history.messages)
+    ? history.messages
+    : []
+  return items.flatMap((item: unknown) => {
+    if (!isRecord(item) || (item.type ?? 'MESSAGE') !== 'MESSAGE') return []
+    const data = WsChatMsgData(item)
+    if (data instanceof type.errors || known.has(data.messageId)) return []
+    const msg = wtvChatMessage(channel, data)
+    return msg.timestampMs > since ? [msg] : []
+  }).sort((a: ChatMessage, b: ChatMessage) => a.timestampMs - b.timestampMs)
+}
+
 export class WtvChatConnection {
   websocket: WebSocket | null = null
 

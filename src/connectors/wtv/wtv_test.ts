@@ -1,6 +1,6 @@
 import { assert, assertEquals } from '@std/assert'
 import { ChannelName, ChatMessage } from '../types.ts'
-import { WtvChatConnection } from './connection.ts'
+import { missedMessages, WtvChatConnection } from './connection.ts'
 import { sleep } from '../../utils.ts'
 
 function connection(
@@ -116,4 +116,35 @@ Deno.test('w.tv silence timer asks for a reconnect', async () => {
   assert(!silenced)
   await sleep(50)
   assert(silenced)
+})
+
+Deno.test('w.tv history fills only the gap: after `since`, unseen, oldest first', () => {
+  const item = (messageId: string, createdAt: string, type = 'MESSAGE') => ({
+    messageId,
+    type,
+    content: messageId,
+    sender: { userId: 'u1', nickname: 'bob', tags: ['TAG_OWNER'] },
+    createdAt,
+  })
+  const history = {
+    messages: [
+      item('seen', '2026-11-18T03:08:40.000Z'),
+      item('lost2', '2026-11-18T03:08:34.000Z'),
+      item('other', '2026-11-18T03:08:33.900Z', 'EVENT'),
+      item('lost1', '2026-11-18T03:08:33.384Z'),
+      item('old', '2026-11-18T03:08:00.000Z'),
+      { broken: true },
+    ],
+  }
+  const since = Date.parse('2026-11-18T03:08:02.000Z')
+  const missed = missedMessages(
+    'olegsvs' as ChannelName,
+    history,
+    since,
+    new Set(['seen']),
+  )
+  assertEquals(missed.map((m) => m.id), ['lost1', 'lost2'])
+  assertEquals(missed[0].channel, 'olegsvs')
+  assertEquals(missed[0].user.wtvFields?.tags, ['TAG_OWNER'])
+  assertEquals(missedMessages('x' as ChannelName, null, 0, new Set()), [])
 })
